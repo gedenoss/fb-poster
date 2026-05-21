@@ -20,6 +20,7 @@
     "express": "^4.19.2",
     "playwright": "^1.47.0",
     "pino": "^9.4.0",
-    "pino-pretty": "^11.2.2"
+    "pino-pretty": "^11.2.2",
+    "ws": "^8.16.0"
   }
 }
