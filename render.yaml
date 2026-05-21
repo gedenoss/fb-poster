@@ -1,0 +1,52 @@
+# render.yaml — Free tier, no Docker.
+#
+# Render will:
+#   1. cd worker
+#   2. npm install
+#   3. npm run start  (which uses Playwright's bundled Chromium)
+#
+# The free Web Service:
+#   • Has no card requirement (as of the last check; verify on signup).
+#   • Sleeps after 15 minutes of inactivity. First request after sleep takes
+#     30–60 seconds to wake up — fine for the use case (member clicks once
+#     in a while).
+#   • 512 MB RAM. Chromium runs but can OOM on heavy uploads — keep image
+#     count low and prefer JPEG.
+#
+services:
+  - type: web
+    name: fb-group-poster
+    runtime: node
+    rootDir: worker
+    plan: free
+    buildCommand: npm install && npx playwright install chromium
+    startCommand: node src/index.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: WORKER_SECRET
+        generateValue: true
+      - key: RELOGIN_TOKEN
+        generateValue: true
+      - key: PUBLIC_BASE_URL
+        sync: false                       # set to your https://...onrender.com URL after first deploy
+      - key: HEADLESS
+        value: "true"
+      - key: TEST_MODE
+        value: "true"                     # ← flip to "false" once you're happy with test runs
+      - key: BROWSER_LOCALE
+        value: "fr-FR"
+      - key: SESSION_BUCKET
+        value: "fb-sessions"
+      - key: SESSION_OBJECT_KEY
+        value: "state.json"
+      - key: POLL_INTERVAL_MS
+        value: "10000"
+      - key: SLACK_WEBHOOK_URL
+        sync: false                       # optional

@@ -1,0 +1,9 @@
+node_modules/
+worker/data/
+worker/.env
+worker/.env.*
+!worker/.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/

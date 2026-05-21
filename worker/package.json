@@ -1,0 +1,25 @@
+{
+  "name": "fb-group-poster-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Persistent Playwright worker that posts properties to Facebook groups.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "HEADLESS=false node --watch src/index.js",
+    "install:browser": "playwright install --with-deps chromium",
+    "postinstall": "playwright install chromium || true"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "playwright": "^1.47.0",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2"
+  }
+}
