@@ -202,8 +202,10 @@ async function recordPublishedPost({ propertyId, groupId, jobId, postUrl }) {
       published_at: new Date().toISOString(),
     })
     .select("id")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data)
+    throw new Error("recordPublishedPost: insert failed to return row");
   return data.id;
 }
 

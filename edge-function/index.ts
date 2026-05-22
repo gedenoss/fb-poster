@@ -82,13 +82,7 @@ async function handleEnqueue(req: Request): Promise<Response> {
     .limit(1)
     .maybeSingle();
   if (existing) {
-    const { data: session } = await supabase
-      .from("fb_session_state")
-      .select("status")
-      .eq("id", 1)
-      .maybeSingle();
-    const sessionStatus = session?.status ?? "unknown";
-    const extras = await maybeReloginPayload(sessionStatus);
+    const extras = await maybeReloginPayload(existing.status);
     return json({
       status: existing.status,
       job_id: existing.id,
@@ -122,16 +116,7 @@ async function handleEnqueue(req: Request): Promise<Response> {
     }).catch(() => {});
   }
 
-  // 5. Check session status and include relogin_url.
-  const { data: session } = await supabase
-    .from("fb_session_state")
-    .select("status")
-    .eq("id", 1)
-    .maybeSingle();
-  const sessionStatus = session?.status ?? "unknown";
-  const extras = await maybeReloginPayload(sessionStatus);
-
-  return json({ status: "queued", job_id: job.id, ...extras });
+  return json({ status: "queued", job_id: job.id });
 }
 
 async function handleStatus(url: URL): Promise<Response> {
@@ -163,11 +148,9 @@ async function handleSession(): Promise<Response> {
 }
 
 async function maybeReloginPayload(status: string | null | undefined) {
+  if (status !== "needs_login") return {};
   return {
-    relogin_url:
-      status === "needs_login" && WORKER_PUBLIC_URL
-        ? `${WORKER_PUBLIC_URL}/relogin`
-        : null,
+    relogin_url: WORKER_PUBLIC_URL ? `${WORKER_PUBLIC_URL}/relogin` : null,
   };
 }
 
