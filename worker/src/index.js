@@ -8,33 +8,45 @@ const db = require("./modules/db");
 const { runJob, reloginLink } = require("./modules/orchestrator");
 const relogin = require("./modules/relogin");
 
-// === DEBUG PLAYWRIGHT INSTALL ===  ← COLLE LE BLOC ICI
+// === DEBUG PLAYWRIGHT INSTALL ===
 const { execSync } = require("child_process");
 try {
-  const cacheDir = "/opt/render/.cache/ms-playwright";
+  console.log("[debug] process.cwd() =", process.cwd());
+  console.log("[debug] __dirname =", __dirname);
   console.log(
     "[debug] PLAYWRIGHT_BROWSERS_PATH =",
     process.env.PLAYWRIGHT_BROWSERS_PATH || "(unset)",
   );
-  console.log("[debug] ls", cacheDir);
-  console.log(execSync(`ls -la ${cacheDir} 2>&1 || echo "MISSING"`).toString());
-  console.log("[debug] ls chromium_headless_shell-1223");
+  console.log("[debug] HOME =", process.env.HOME || "(unset)");
+
+  console.log("[debug] ls cwd:");
+  console.log(execSync("ls -la 2>&1").toString());
+
+  console.log("[debug] ls node_modules/playwright (looking for browsers):");
   console.log(
     execSync(
-      `ls -la ${cacheDir}/chromium_headless_shell-1223 2>&1 || echo "MISSING"`,
+      'ls -la node_modules/playwright/.local-browsers 2>&1 || echo "MISSING"',
     ).toString(),
   );
-  console.log(
-    "[debug] ls chromium_headless_shell-1223/chrome-headless-shell-linux64",
-  );
+
+  console.log("[debug] find playwright cache anywhere on disk:");
   console.log(
     execSync(
-      `ls -la ${cacheDir}/chromium_headless_shell-1223/chrome-headless-shell-linux64 2>&1 || echo "MISSING"`,
+      'find / -name "chrome-headless-shell" -type f 2>/dev/null | head -5 || echo "NONE"',
     ).toString(),
   );
+
   console.log(
     "[debug] playwright version:",
     execSync("npx playwright --version 2>&1").toString().trim(),
+  );
+
+  // Where does playwright THINK its browsers are?
+  console.log("[debug] playwright registry expected paths:");
+  console.log(
+    execSync(
+      "node -e \"const r=require('playwright-core/lib/server/registry'); const reg=new r.Registry(require('playwright-core/browsers.json')); console.log(JSON.stringify(reg.executablesForChannel ? 'has reg' : 'no reg'));\" 2>&1 || echo \"introspection failed\"",
+    ).toString(),
   );
 } catch (e) {
   console.error("[debug] failed:", e.message);
