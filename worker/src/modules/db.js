@@ -117,7 +117,6 @@ async function fetchPropertyPayload(propertyId) {
     .from("v_fb_property_payload")
     .select("*")
     .eq("property_id", propertyId)
-    .limit(1)
     .maybeSingle();
   if (error) throw error;
   if (!base) throw new Error(`property ${propertyId} not found`);

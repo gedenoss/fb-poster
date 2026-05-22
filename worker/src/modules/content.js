@@ -34,8 +34,6 @@ function stripHtml(html) {
  *   Description
  */
 function buildPostText(payload) {
-  return "test";
-  /*
   const lines = [];
 
   if (payload.title) lines.push(payload.title.trim());
@@ -63,7 +61,6 @@ function buildPostText(payload) {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  */
 }
 
 module.exports = { buildPostText, formatPrice };
