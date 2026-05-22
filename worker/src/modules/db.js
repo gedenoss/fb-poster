@@ -88,7 +88,6 @@ async function getStuckNeedsLoginJobs() {
 // -----------------------------------------------------------------------
 async function setSessionState(status, extra = {}) {
   const patch = {
-    id: 1,
     status,
     updated_at: new Date().toISOString(),
     ...(status === "ok" && {
@@ -98,7 +97,7 @@ async function setSessionState(status, extra = {}) {
     ...(extra.lastError !== undefined && { last_error: extra.lastError }),
     ...(extra.checked && { last_check_at: new Date().toISOString() }),
   };
-  await supabase.from("fb_session_state").upsert(patch, { onConflict: "id" });
+  await supabase.from("fb_session_state").update(patch).eq("id", 1);
 }
 
 async function getSessionState() {
@@ -118,6 +117,7 @@ async function fetchPropertyPayload(propertyId) {
     .from("v_fb_property_payload")
     .select("*")
     .eq("property_id", propertyId)
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   if (!base) throw new Error(`property ${propertyId} not found`);
