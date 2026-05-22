@@ -88,6 +88,7 @@ async function getStuckNeedsLoginJobs() {
 // -----------------------------------------------------------------------
 async function setSessionState(status, extra = {}) {
   const patch = {
+    id: 1,
     status,
     updated_at: new Date().toISOString(),
     ...(status === "ok" && {
@@ -97,7 +98,7 @@ async function setSessionState(status, extra = {}) {
     ...(extra.lastError !== undefined && { last_error: extra.lastError }),
     ...(extra.checked && { last_check_at: new Date().toISOString() }),
   };
-  await supabase.from("fb_session_state").update(patch).eq("id", 1);
+  await supabase.from("fb_session_state").upsert(patch, { onConflict: "id" });
 }
 
 async function getSessionState() {
@@ -229,16 +230,14 @@ async function log({
   meta = null,
 }) {
   try {
-    await supabase
-      .from("fb_action_logs")
-      .insert({
-        job_id: jobId,
-        group_id: groupId,
-        level,
-        action,
-        message,
-        meta,
-      });
+    await supabase.from("fb_action_logs").insert({
+      job_id: jobId,
+      group_id: groupId,
+      level,
+      action,
+      message,
+      meta,
+    });
   } catch (e) {
     logger.warn({ err: e }, "log insert failed");
   }
