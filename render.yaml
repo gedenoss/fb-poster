@@ -1,29 +1,19 @@
 # render.yaml — Free tier, no Docker.
-#
-# Render will:
-#   1. cd worker
-#   2. npm install
-#   3. npm run start  (which uses Playwright's bundled Chromium)
-#
-# The free Web Service:
-#   • Has no card requirement (as of the last check; verify on signup).
-#   • Sleeps after 15 minutes of inactivity. First request after sleep takes
-#     30–60 seconds to wake up — fine for the use case (member clicks once
-#     in a while).
-#   • 512 MB RAM. Chromium runs but can OOM on heavy uploads — keep image
-#     count low and prefer JPEG.
-#
 services:
   - type: web
     name: fb-group-poster
     runtime: node
     rootDir: worker
     plan: free
-    buildCommand: npm ci && npx playwright install chromium
+    # PLAYWRIGHT_BROWSERS_PATH doit être exporté AVANT le install pour que
+    # les binaires aillent dans le dossier de l'app (persistant entre build et runtime),
+    # et pas dans /opt/render/.cache qui est volatile.
+    buildCommand: PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/worker/.playwright-browsers npm ci && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/worker/.playwright-browsers npx playwright install chromium
     startCommand: node src/index.js
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
+      # CRITIQUE : doit pointer vers le même chemin que celui utilisé au build
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/worker/.playwright-browsers
       - key: NODE_VERSION
@@ -37,11 +27,11 @@ services:
       - key: RELOGIN_TOKEN
         generateValue: true
       - key: PUBLIC_BASE_URL
-        sync: false # set to your https://...onrender.com URL after first deploy
+        sync: false
       - key: HEADLESS
         value: "true"
       - key: TEST_MODE
-        value: "true" # ← flip to "false" once you're happy with test runs
+        value: "true"
       - key: BROWSER_LOCALE
         value: "fr-FR"
       - key: SESSION_BUCKET
@@ -51,4 +41,4 @@ services:
       - key: POLL_INTERVAL_MS
         value: "10000"
       - key: SLACK_WEBHOOK_URL
-        sync: false # optional
+        sync: false
