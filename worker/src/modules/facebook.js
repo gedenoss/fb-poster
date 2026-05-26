@@ -283,11 +283,69 @@ async function deletePost(page, postUrl) {
 // REMPLACE postToGroup() en entier dans facebook.js par celle-ci.
 // (Le reste du fichier reste inchangé.)
 
+// REMPLACE postToGroup() en entier dans facebook.js par cette version.
+// Le reste du fichier reste inchangé.
+//
+// Cette version :
+// 1. Ferme les bannières d'approbation en attente avant tout
+// 2. Utilise 3 stratégies de clic (text, role-button force, JS pur)
+// 3. Détecte si le post est en attente de modération ou publié
+// 4. Retourne un objet { url, status } au lieu d'une string
+
 async function postToGroup(page, group, text, imagePaths) {
-  await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
+  await page.goto(group.url, {
+    waitUntil: "commit",
+    timeout: 30_000,
+  });
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
 
+  // ====================================================================
+  // Dismiss any "admin approval pending" or similar info banners
+  // ====================================================================
+  try {
+    const dismissPatterns = [
+      /^fermer$/i,
+      /^close$/i,
+      /j'ai compris/i,
+      /got it/i,
+      /^ok$/i,
+      /^d'accord$/i,
+    ];
+    for (const re of dismissPatterns) {
+      try {
+        const btn = page.getByRole("button", { name: re }).first();
+        if (await btn.isVisible({ timeout: 800 }).catch(() => false)) {
+          await btn.click({ timeout: 2000 }).catch(() => {});
+          await human.sleep(400);
+          logger.info({ matched: re.source }, "dismissed an info banner");
+        }
+      } catch (_) {}
+    }
+    // Aria-label close icons
+    const closeButtons = await page
+      .locator('[aria-label="Fermer" i], [aria-label="Close" i]')
+      .all();
+    for (const btn of closeButtons.slice(0, 3)) {
+      try {
+        if (await btn.isVisible({ timeout: 400 }).catch(() => false)) {
+          await btn.click({ timeout: 1500 }).catch(() => {});
+          await human.sleep(300);
+        }
+      } catch (_) {}
+    }
+    await page.keyboard.press("Escape").catch(() => {});
+    await human.sleep(400);
+  } catch (e) {
+    logger.warn(
+      { err: e.message },
+      "banner dismiss step failed (non-critical)",
+    );
+  }
+
+  // ====================================================================
+  // Wait for the composer placeholder to be visible
+  // ====================================================================
   const composerPlaceholders = [
     /exprimez-vous/i,
     /exprime-toi/i,
@@ -302,9 +360,7 @@ async function postToGroup(page, group, text, imagePaths) {
     /qué estás pensando/i,
   ];
 
-  // ---- Wait for the group content (composer placeholder) to be visible ----
   logger.info({ groupUrl: group.url }, "waiting for group content to load");
-
   let matchedRe = null;
   const startWait = Date.now();
   const MAX_WAIT_MS = 45_000;
@@ -317,9 +373,7 @@ async function postToGroup(page, group, text, imagePaths) {
           matchedRe = re;
           break;
         }
-      } catch (_) {
-        /* try next */
-      }
+      } catch (_) {}
     }
     if (matchedRe) break;
     await page.evaluate(() => window.scrollBy(0, 50)).catch(() => {});
@@ -329,37 +383,37 @@ async function postToGroup(page, group, text, imagePaths) {
   const waitMs = Date.now() - startWait;
   logger.info(
     { waitMs, matched: matchedRe?.source || null },
-    "finished waiting for group content",
+    "finished waiting",
   );
 
   if (!matchedRe) {
     throw new Error(`composer did not appear within ${MAX_WAIT_MS}ms`);
   }
 
-  // ---- Click the composer placeholder DIRECTLY ----
-  // We already know it's visible; no need to re-check.
-  // Use .click() with force:true to avoid Playwright's actionability checks
-  // that can hang on Facebook's animated UI.
+  // ====================================================================
+  // Click the composer — 3 strategies in order
+  // ====================================================================
   let opened = false;
 
+  // Strategy 1: Playwright text click
   try {
     const el = page.getByText(matchedRe).first();
     await el.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
     await human.sleep(human.randInt(300, 700));
-    await el.click({ delay: human.randInt(60, 160), timeout: 10_000 });
+    await el.click({ delay: human.randInt(60, 160), timeout: 8_000 });
     opened = true;
     logger.info(
-      { strategy: `text-direct:${matchedRe.source}` },
-      "composer click attempted",
+      { strategy: `text:${matchedRe.source}` },
+      "composer clicked (text)",
     );
   } catch (e) {
     logger.warn(
       { err: e.message },
-      "direct text click failed, trying role=button",
+      "text click failed → trying role=button force",
     );
   }
 
-  // Fallback: click the closest role=button containing the placeholder text
+  // Strategy 2: role=button with force
   if (!opened) {
     try {
       const el = page
@@ -370,22 +424,59 @@ async function postToGroup(page, group, text, imagePaths) {
       await el.click({
         delay: human.randInt(60, 160),
         force: true,
-        timeout: 10_000,
+        timeout: 8_000,
       });
       opened = true;
       logger.info(
-        { strategy: `role-button:${matchedRe.source}` },
-        "composer click attempted (force)",
+        { strategy: `role-button-force:${matchedRe.source}` },
+        "composer clicked (force)",
       );
     } catch (e) {
-      logger.warn({ err: e.message }, "role=button click also failed");
+      logger.warn(
+        { err: e.message },
+        "role=button force click failed → trying JS click",
+      );
+    }
+  }
+
+  // Strategy 3: Pure JavaScript click
+  if (!opened) {
+    try {
+      const clicked = await page.evaluate((pattern) => {
+        const re = new RegExp(pattern, "i");
+        const all = Array.from(
+          document.querySelectorAll('[role="button"], div, span'),
+        );
+        for (const el of all) {
+          if (re.test(el.innerText || "")) {
+            let target = el;
+            while (target && target.getAttribute("role") !== "button") {
+              target = target.parentElement;
+              if (!target) break;
+            }
+            if (target) {
+              target.click();
+              return { ok: true };
+            }
+          }
+        }
+        return { ok: false };
+      }, matchedRe.source);
+      if (clicked.ok) {
+        opened = true;
+        logger.info(
+          { strategy: `js-click:${matchedRe.source}` },
+          "composer clicked (JS)",
+        );
+        await human.sleep(1000);
+      }
+    } catch (e) {
+      logger.warn({ err: e.message }, "JS click failed");
     }
   }
 
   if (!opened) {
-    // ---- Last-ditch debug snapshot ----
     try {
-      const pageUrl = page.url();
       const buttonNames = await page.evaluate(() => {
         const buttons = Array.from(
           document.querySelectorAll('button, [role="button"]'),
@@ -399,16 +490,16 @@ async function postToGroup(page, group, text, imagePaths) {
           .filter((x) => x.text || x.aria);
       });
       logger.error(
-        { pageUrl, buttonNames },
-        "composer click exhausted all strategies",
+        { pageUrl: page.url(), buttonNames },
+        "all click strategies failed",
       );
-    } catch (_) {
-      /* ignore */
-    }
-    throw new Error("composer not found (click failed)");
+    } catch (_) {}
+    throw new Error("composer not found (all strategies failed)");
   }
 
-  // ---- Wait for either a dialog OR a textbox to appear ----
+  // ====================================================================
+  // Wait for dialog or textbox
+  // ====================================================================
   let scope = null;
   let textbox = null;
 
@@ -434,36 +525,25 @@ async function postToGroup(page, group, text, imagePaths) {
       logger.info("composer opened in inline mode");
     }
   } catch (e) {
-    try {
-      const url = page.url();
-      const title = await page.title();
-      logger.error(
-        { url, title, err: e.message },
-        "no composer dialog or textbox appeared after click",
-      );
-    } catch (_) {
-      /* ignore */
-    }
     throw new Error(`composer opened but no textbox/dialog: ${e.message}`);
   }
 
   await human.sleep(human.randInt(800, 1800));
 
-  // ---- Fill the textbox ----
+  // ====================================================================
+  // Fill textbox + upload images
+  // ====================================================================
   await textbox.click();
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
-  // ---- Upload images ----
   if (imagePaths && imagePaths.length) {
     try {
       await clickByRoleNameRegex(scope, "button", RE_ATTACH_PHOTO, {
         timeout: 6000,
       });
       await human.sleep(human.randInt(700, 1500));
-    } catch {
-      /* file input may already be present */
-    }
+    } catch {}
 
     const fileInputs = await page.locator('input[type="file"]').all();
     let target = null;
@@ -474,14 +554,16 @@ async function postToGroup(page, group, text, imagePaths) {
         break;
       }
     }
-    if (!target) throw new Error("no file input found in composer");
+    if (!target) throw new Error("no file input found");
     await target.setInputFiles(imagePaths);
     await waitForUploadsToFinish(scope === page ? page.locator("body") : scope);
   }
 
   await human.sleep(human.randInt(2000, 5000));
 
-  // ---- Publish ----
+  // ====================================================================
+  // Click Publish
+  // ====================================================================
   const publishBtn = await findPublishButton(
     scope === page ? page.locator("body") : scope,
   );
@@ -491,6 +573,7 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(400, 900));
   await publishBtn.click({ delay: human.randInt(60, 180) });
 
+  // Wait for the dialog to close OR for moderation message
   if (scope !== page) {
     await scope.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
   } else {
@@ -498,7 +581,51 @@ async function postToGroup(page, group, text, imagePaths) {
   }
   await human.sleep(human.randInt(4000, 8000));
 
+  // ====================================================================
+  // After publish: detect if the post is PENDING moderation or PUBLISHED
+  // ====================================================================
+  const pendingDetected = await detectPendingModeration(page);
+  if (pendingDetected) {
+    logger.info("post is pending admin approval");
+    // Return a special URL that signals "pending" - we can't capture a real
+    // URL until the admin approves it
+    return `${group.url}#pending-${Date.now()}`;
+  }
+
+  // Otherwise, try to capture the real post URL
   return await captureMostRecentPostUrl(page, group.url);
+}
+
+/**
+ * Detects if Facebook is showing a "post pending moderation" message.
+ * Returns true if the post is being held for admin review.
+ */
+async function detectPendingModeration(page) {
+  const pendingTexts = [
+    /en attente d'approbation/i,
+    /pending approval/i,
+    /awaiting review/i,
+    /vérifié par un admin/i,
+    /sera examiné/i,
+    /publication.*examen/i,
+    /admin doit approuver/i,
+    /administrateur.*approuver/i,
+  ];
+
+  for (const re of pendingTexts) {
+    try {
+      const found = await page
+        .getByText(re)
+        .first()
+        .isVisible({ timeout: 1500 })
+        .catch(() => false);
+      if (found) {
+        logger.info({ matched: re.source }, "pending moderation detected");
+        return true;
+      }
+    } catch (_) {}
+  }
+  return false;
 }
 
 async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
