@@ -280,6 +280,9 @@ async function deletePost(page, postUrl) {
 // REMPLACE le DÉBUT de postToGroup() dans facebook.js par ceci.
 // (Garde tout ce qui vient après les "==== END DEBUG ====")
 
+// REMPLACE postToGroup() en entier dans facebook.js par celle-ci.
+// (Le reste du fichier reste inchangé.)
+
 async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, {
     waitUntil: "domcontentloaded",
@@ -288,10 +291,6 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
 
-  // ---- Wait for the group content to actually load ----
-  // The group page loads in 2 phases: shell (instant) then group content (lazy XHR).
-  // On Render free tier (0.1 CPU) the second phase can take 10-20 seconds.
-  // We poll for the composer placeholder text, which appears once content is loaded.
   const composerPlaceholders = [
     /exprimez-vous/i,
     /exprime-toi/i,
@@ -306,137 +305,127 @@ async function postToGroup(page, group, text, imagePaths) {
     /qué estás pensando/i,
   ];
 
+  // ---- Wait for the group content (composer placeholder) to be visible ----
   logger.info({ groupUrl: group.url }, "waiting for group content to load");
 
-  let composerVisible = false;
+  let matchedRe = null;
   const startWait = Date.now();
-  const MAX_WAIT_MS = 45_000; // 45 sec max
+  const MAX_WAIT_MS = 45_000;
 
   while (Date.now() - startWait < MAX_WAIT_MS) {
-    // Try each placeholder regex to see if it's visible
     for (const re of composerPlaceholders) {
       try {
         const el = page.getByText(re).first();
-        if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
-          composerVisible = true;
+        if (await el.isVisible({ timeout: 400 }).catch(() => false)) {
+          matchedRe = re;
           break;
         }
       } catch (_) {
         /* try next */
       }
     }
-    if (composerVisible) break;
-
-    // Scroll a tiny bit to nudge lazy loading
+    if (matchedRe) break;
     await page.evaluate(() => window.scrollBy(0, 50)).catch(() => {});
     await human.sleep(1500);
   }
 
   const waitMs = Date.now() - startWait;
   logger.info(
-    { waitMs, composerVisible },
+    { waitMs, matched: matchedRe?.source || null },
     "finished waiting for group content",
   );
 
-  // ---- DEBUG: dump page state ----
+  if (!matchedRe) {
+    throw new Error(`composer did not appear within ${MAX_WAIT_MS}ms`);
+  }
+
+  // ---- Click the composer placeholder DIRECTLY ----
+  // We already know it's visible; no need to re-check.
+  // Use .click() with force:true to avoid Playwright's actionability checks
+  // that can hang on Facebook's animated UI.
+  let opened = false;
+
   try {
-    const pageUrl = page.url();
-    const pageTitle = await page.title().catch(() => "");
-    const buttonNames = await page.evaluate(() => {
-      const buttons = Array.from(
-        document.querySelectorAll('button, [role="button"]'),
-      );
-      return buttons
-        .slice(0, 40)
-        .map((b) => ({
-          text: (b.innerText || "").trim().slice(0, 80),
-          aria: (b.getAttribute("aria-label") || "").slice(0, 80),
-        }))
-        .filter((x) => x.text || x.aria);
-    });
+    const el = page.getByText(matchedRe).first();
+    await el.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+    await human.sleep(human.randInt(300, 700));
+    await el.click({ delay: human.randInt(60, 160), timeout: 10_000 });
+    opened = true;
     logger.info(
-      {
-        groupUrl: group.url,
-        pageUrl,
-        pageTitle,
-        buttonNames,
-        composerVisible,
-        waitMs,
-      },
-      "debug: arrived on group page",
+      { strategy: `text-direct:${matchedRe.source}` },
+      "composer click attempted",
     );
   } catch (e) {
-    logger.warn({ err: e.message }, "debug snapshot failed");
-  }
-
-  if (!composerVisible) {
-    throw new Error(
-      `composer did not appear within ${MAX_WAIT_MS}ms (page not fully loaded)`,
+    logger.warn(
+      { err: e.message },
+      "direct text click failed, trying role=button",
     );
   }
 
-  // ---- Open the composer ----
-  let opened = false;
-  let matchedStrategy = null;
-
-  // Strategy 1: click on a TEXT element containing the placeholder
-  for (const re of composerPlaceholders) {
-    try {
-      const el = page.getByText(re).first();
-      if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-        await el.scrollIntoViewIfNeeded().catch(() => {});
-        await human.sleep(human.randInt(400, 900));
-        await el.click({ delay: human.randInt(60, 160) });
-        opened = true;
-        matchedStrategy = `text:${re.source}`;
-        break;
-      }
-    } catch (_) {
-      /* try next */
-    }
-  }
-
-  // Strategy 2: click on the parent <div role="button"> that contains the placeholder text
+  // Fallback: click the closest role=button containing the placeholder text
   if (!opened) {
-    for (const re of composerPlaceholders) {
-      try {
-        const el = page.locator('[role="button"]', { hasText: re }).first();
-        if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await el.scrollIntoViewIfNeeded().catch(() => {});
-          await human.sleep(human.randInt(400, 900));
-          await el.click({ delay: human.randInt(60, 160) });
-          opened = true;
-          matchedStrategy = `role-button:${re.source}`;
-          break;
-        }
-      } catch (_) {
-        /* try next */
-      }
+    try {
+      const el = page
+        .locator('[role="button"]', { hasText: matchedRe })
+        .first();
+      await el.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+      await human.sleep(human.randInt(300, 700));
+      await el.click({
+        delay: human.randInt(60, 160),
+        force: true,
+        timeout: 10_000,
+      });
+      opened = true;
+      logger.info(
+        { strategy: `role-button:${matchedRe.source}` },
+        "composer click attempted (force)",
+      );
+    } catch (e) {
+      logger.warn({ err: e.message }, "role=button click also failed");
     }
   }
 
-  if (opened) {
-    logger.info({ strategy: matchedStrategy }, "composer opened");
-  } else {
-    throw new Error("composer not found (no strategy worked)");
+  if (!opened) {
+    // ---- Last-ditch debug snapshot ----
+    try {
+      const pageUrl = page.url();
+      const buttonNames = await page.evaluate(() => {
+        const buttons = Array.from(
+          document.querySelectorAll('button, [role="button"]'),
+        );
+        return buttons
+          .slice(0, 40)
+          .map((b) => ({
+            text: (b.innerText || "").trim().slice(0, 80),
+            aria: (b.getAttribute("aria-label") || "").slice(0, 80),
+          }))
+          .filter((x) => x.text || x.aria);
+      });
+      logger.error(
+        { pageUrl, buttonNames },
+        "composer click exhausted all strategies",
+      );
+    } catch (_) {
+      /* ignore */
+    }
+    throw new Error("composer not found (click failed)");
   }
 
+  // ---- Wait for either a dialog OR a textbox to appear ----
   let scope = null;
   let textbox = null;
 
   try {
-    // Race: dialog first, falls back to inline textbox
     const dialogPromise = page
       .getByRole("dialog")
       .first()
-      .waitFor({ state: "visible", timeout: 12_000 });
+      .waitFor({ state: "visible", timeout: 15_000 });
     const textboxPromise = page
       .getByRole("textbox")
       .first()
-      .waitFor({ state: "visible", timeout: 12_000 });
+      .waitFor({ state: "visible", timeout: 15_000 });
     await Promise.race([dialogPromise, textboxPromise]);
 
-    // Now figure out which one appeared
     const dialog = page.getByRole("dialog").first();
     if (await dialog.isVisible({ timeout: 500 }).catch(() => false)) {
       scope = dialog;
@@ -448,7 +437,6 @@ async function postToGroup(page, group, text, imagePaths) {
       logger.info("composer opened in inline mode");
     }
   } catch (e) {
-    // Last resort: dump the page again so we can see what happened
     try {
       const url = page.url();
       const title = await page.title();
@@ -464,12 +452,12 @@ async function postToGroup(page, group, text, imagePaths) {
 
   await human.sleep(human.randInt(800, 1800));
 
-  // ---- Fill and publish ----
+  // ---- Fill the textbox ----
   await textbox.click();
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
-  // Upload images
+  // ---- Upload images ----
   if (imagePaths && imagePaths.length) {
     try {
       await clickByRoleNameRegex(scope, "button", RE_ATTACH_PHOTO, {
@@ -496,6 +484,7 @@ async function postToGroup(page, group, text, imagePaths) {
 
   await human.sleep(human.randInt(2000, 5000));
 
+  // ---- Publish ----
   const publishBtn = await findPublishButton(
     scope === page ? page.locator("body") : scope,
   );
@@ -505,7 +494,6 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(400, 900));
   await publishBtn.click({ delay: human.randInt(60, 180) });
 
-  // Wait for the composer to close (only meaningful in dialog mode)
   if (scope !== page) {
     await scope.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
   } else {
