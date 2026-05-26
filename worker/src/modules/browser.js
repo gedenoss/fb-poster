@@ -8,7 +8,6 @@ const { sleep } = require("../utils/human");
 
 /**
  * Launch a Chromium with the latest known session.
- * Returns { browser, context, page }.
  */
 async function launch({ pullFresh = true } = {}) {
   if (pullFresh) {
@@ -52,19 +51,19 @@ async function launch({ pullFresh = true } = {}) {
 }
 
 /**
- * Visit facebook.com and decide whether we're logged in.
- * Returns 'ok' | 'login_required' | 'checkpoint' | 'unknown'.
+ * Visit a page that requires authentication and decide whether we're logged in.
  *
- * Logic (aligned with loginWithCredentials):
- *  1. If URL contains /login or /checkpoint → not ok.
- *  2. If any logged-in indicator is visible → ok.
- *  3. Fallback: if we navigated to a non-login, non-checkpoint URL,
- *     and the page has a body, assume we're logged in.
- *     (Same heuristic as loginWithCredentials.)
+ * We hit /me — Facebook's "redirect to current user's profile" alias.
+ * - If logged in → redirects to https://www.facebook.com/<username>
+ * - If NOT logged in → redirects to https://www.facebook.com/login/
+ *
+ * This is a much stronger signal than checking the public landing page.
+ *
+ * Returns 'ok' | 'login_required' | 'checkpoint' | 'unknown'.
  */
 async function checkSession(page) {
   try {
-    await page.goto("https://www.facebook.com/", {
+    await page.goto("https://www.facebook.com/me", {
       waitUntil: "domcontentloaded",
       timeout: 45_000,
     });
@@ -79,13 +78,23 @@ async function checkSession(page) {
   const url = page.url();
   const title = await page.title().catch(() => "");
 
-  // Log what we see — helps debugging when this gets stuck
   logger.info({ url, title }, "checkSession: landed");
 
+  // Hard signals from URL
   if (/\/checkpoint/i.test(url)) return "checkpoint";
   if (/\/login/i.test(url)) return "login_required";
 
-  // Try a broader set of indicators (same as loginWithCredentials)
+  // /me redirected somewhere else AND it's not /login or /checkpoint → logged in
+  // (typically https://www.facebook.com/<username> or /profile.php?id=...)
+  if (!/\/me\/?$/.test(url)) {
+    logger.info(
+      { finalUrl: url },
+      "checkSession: /me redirected to profile, logged in",
+    );
+    return "ok";
+  }
+
+  // If we're still on /me, double-check with content indicators
   const indicators = [
     '[aria-label*="Create a post" i]',
     '[aria-label*="Créer une publication" i]',
@@ -107,18 +116,8 @@ async function checkSession(page) {
     }
   }
 
-  // Fallback: if we're not on /login or /checkpoint and the page has a body,
-  // assume we're logged in. Same heuristic used in loginWithCredentials.
-  const finalUrl = page.url();
-  if (!/\/(login|checkpoint)/i.test(finalUrl)) {
-    logger.info(
-      { finalUrl },
-      "checkSession: no indicator matched but URL is non-login, assuming ok",
-    );
-    return "ok";
-  }
-
   return "unknown";
 }
 
 module.exports = { launch, checkSession };
+//v2
