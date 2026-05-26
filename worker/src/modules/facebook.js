@@ -501,66 +501,6 @@ async function postToGroup(page, group, text, imagePaths) {
   return await captureMostRecentPostUrl(page, group.url);
 }
 
-/**
- * Continues after the textbox is filled: uploads images, clicks publish, captures URL.
- * Extracted because we want it to work both for dialog and inline composer.
- */
-async function fillAndPublish(
-  page,
-  scope,
-  textbox,
-  text,
-  imagePaths,
-  groupUrl,
-  alreadyTyped = false,
-) {
-  if (!alreadyTyped) {
-    await textbox.click();
-    await human.humanType(textbox, text);
-    await human.sleep(human.randInt(800, 2000));
-  }
-
-  // Upload images if any
-  if (imagePaths && imagePaths.length) {
-    try {
-      await clickByRoleNameRegex(scope, "button", RE_ATTACH_PHOTO, {
-        timeout: 6000,
-      });
-      await human.sleep(human.randInt(700, 1500));
-    } catch {
-      /* file input may already be present */
-    }
-
-    const fileInputs = await page.locator('input[type="file"]').all();
-    let target = null;
-    for (const inp of fileInputs) {
-      const accept = (await inp.getAttribute("accept")) || "";
-      if (/image|\*|jpg|png/i.test(accept) || accept === "") {
-        target = inp;
-        break;
-      }
-    }
-    if (!target) throw new Error("no file input found in composer");
-    await target.setInputFiles(imagePaths);
-    await waitForUploadsToFinish(scope);
-  }
-
-  await human.sleep(human.randInt(2000, 5000));
-
-  const publishBtn = await findPublishButton(scope);
-  if (!publishBtn) throw new Error("publish button not found / disabled");
-
-  await publishBtn.scrollIntoViewIfNeeded().catch(() => {});
-  await human.sleep(human.randInt(400, 900));
-  await publishBtn.click({ delay: human.randInt(60, 180) });
-
-  // Wait for the dialog/composer to close
-  await scope.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
-  await human.sleep(human.randInt(4000, 8000));
-
-  return await captureMostRecentPostUrl(page, groupUrl);
-}
-
 async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
   const start = Date.now();
   const progressSelectors = [
