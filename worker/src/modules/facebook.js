@@ -290,6 +290,42 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.microScroll(page);
   await human.sleep(human.randInt(800, 1800));
 
+  // === DEBUG GROUP PAGE ===
+  try {
+    const pageUrl = page.url();
+    const pageTitle = await page.title().catch(() => "");
+    const buttonNames = await page.evaluate(() => {
+      const buttons = Array.from(
+        document.querySelectorAll('button, [role="button"]'),
+      );
+      return buttons
+        .slice(0, 40)
+        .map((b) => ({
+          text: (b.innerText || "").trim().slice(0, 80),
+          aria: (b.getAttribute("aria-label") || "").slice(0, 80),
+        }))
+        .filter((x) => x.text || x.aria);
+    });
+    // Aussi les zones de texte cliquables (parfois le composer est un div role=button avec un placeholder)
+    const placeholders = await page.evaluate(() => {
+      const all = Array.from(
+        document.querySelectorAll("[placeholder], [data-placeholder]"),
+      );
+      return all.slice(0, 10).map((e) => ({
+        tag: e.tagName,
+        placeholder:
+          e.getAttribute("placeholder") || e.getAttribute("data-placeholder"),
+      }));
+    });
+    logger.info(
+      { groupUrl: group.url, pageUrl, pageTitle, buttonNames, placeholders },
+      "debug: arrived on group page",
+    );
+  } catch (e) {
+    logger.warn({ err: e.message }, "debug snapshot failed");
+  }
+  // === FIN DEBUG ===
+
   // Open the composer.
   await retry(
     async () => {
