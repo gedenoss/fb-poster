@@ -280,6 +280,9 @@ async function deletePost(page, postUrl) {
 // =============================================================================
 // Post to a group
 // =============================================================================
+// REMPLACE ta fonction postToGroup() existante dans facebook.js par celle-ci.
+// (Le reste du fichier reste identique.)
+
 async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, {
     waitUntil: "domcontentloaded",
@@ -290,88 +293,125 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.microScroll(page);
   await human.sleep(human.randInt(800, 1800));
 
-  // === DEBUG GROUP PAGE ===
-  try {
-    const pageUrl = page.url();
-    const pageTitle = await page.title().catch(() => "");
-    const buttonNames = await page.evaluate(() => {
-      const buttons = Array.from(
-        document.querySelectorAll('button, [role="button"]'),
-      );
-      return buttons
-        .slice(0, 40)
-        .map((b) => ({
-          text: (b.innerText || "").trim().slice(0, 80),
-          aria: (b.getAttribute("aria-label") || "").slice(0, 80),
-        }))
-        .filter((x) => x.text || x.aria);
-    });
-    // Aussi les zones de texte cliquables (parfois le composer est un div role=button avec un placeholder)
-    const placeholders = await page.evaluate(() => {
-      const all = Array.from(
-        document.querySelectorAll("[placeholder], [data-placeholder]"),
-      );
-      return all.slice(0, 10).map((e) => ({
-        tag: e.tagName,
-        placeholder:
-          e.getAttribute("placeholder") || e.getAttribute("data-placeholder"),
-      }));
-    });
-    logger.info(
-      { groupUrl: group.url, pageUrl, pageTitle, buttonNames, placeholders },
-      "debug: arrived on group page",
-    );
-  } catch (e) {
-    logger.warn({ err: e.message }, "debug snapshot failed");
+  // ---- Open the composer ----
+  // The group page shows a placeholder like "Exprimez-vous..." that's NOT a real button,
+  // it's a div with role="button" whose accessible name is the placeholder text itself.
+  // So we look for the TEXT (or any clickable element containing it), and click on it.
+  const composerPlaceholders = [
+    /exprimez-vous/i, // FR poli (le plus courant en 2026)
+    /exprime-toi/i, // FR tutoie
+    /écrivez quelque chose/i, // FR poli
+    /écris quelque chose/i, // FR tutoie
+    /quoi de neuf/i, // FR
+    /qu'avez-vous.*tête/i, // FR "Qu'avez-vous en tête ?"
+    /qu'est-ce que vous.*tête/i, // FR alt
+    /write something/i, // EN
+    /create.*post/i, // EN
+    /what's on your mind/i, // EN
+    /qué estás pensando/i, // ES
+  ];
+
+  let opened = false;
+  for (const re of composerPlaceholders) {
+    try {
+      const el = page.getByText(re).first();
+      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await el.scrollIntoViewIfNeeded().catch(() => {});
+        await human.sleep(human.randInt(400, 900));
+        await el.click({ delay: human.randInt(60, 160) });
+        opened = true;
+        logger.info({ matched: re.source }, "composer placeholder clicked");
+        break;
+      }
+    } catch (_) {
+      /* try next */
+    }
   }
-  // === FIN DEBUG ===
 
-  // Open the composer.
-  await retry(
-    async () => {
-      try {
-        await clickByRoleNameRegex(page, "button", RE_CREATE_POST, {
-          timeout: 8000,
-        });
-        return;
-      } catch {
-        /* fallback below */
-      }
-      const placeholders = [
-        /write something/i,
-        /create.*post/i,
-        /exprime-toi/i,
-        /quoi de neuf/i,
-        /écris quelque chose/i,
-        /qué estás pensando/i,
-      ];
-      for (const re of placeholders) {
-        const el = page.getByText(re).first();
-        if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await el.click({ delay: human.randInt(40, 120) });
-          return;
-        }
-      }
-      throw new Error("composer not found");
-    },
-    { tries: 3, baseMs: 1500 },
-  );
+  if (!opened) {
+    // Fallback: try role=button with broad name match
+    try {
+      await clickByRoleNameRegex(
+        page,
+        "button",
+        /publier|publish|écrire|exprime/i,
+        {
+          timeout: 6000,
+        },
+      );
+      opened = true;
+    } catch (_) {
+      /* fallthrough */
+    }
+  }
 
+  if (!opened) {
+    throw new Error("composer not found");
+  }
+
+  // ---- Wait for the dialog to appear ----
   const dialog = page.getByRole("dialog").first();
-  await dialog.waitFor({ state: "visible", timeout: 15_000 });
+  try {
+    await dialog.waitFor({ state: "visible", timeout: 15_000 });
+  } catch (e) {
+    // Some FB variants don't open a modal dialog — the composer expands inline.
+    // In that case, look for the textbox directly on the page.
+    logger.warn("dialog did not appear, trying inline composer");
+    const inlineTextbox = page.getByRole("textbox").first();
+    await inlineTextbox.waitFor({ state: "visible", timeout: 10_000 });
+    return await fillAndPublish(
+      page,
+      page,
+      inlineTextbox,
+      text,
+      imagePaths,
+      group.url,
+    );
+  }
+
   await human.sleep(human.randInt(800, 1800));
 
-  // Type the body.
+  // ---- Fill the textbox ----
   const textbox = dialog.getByRole("textbox").first();
   await textbox.waitFor({ state: "visible", timeout: 10_000 });
   await textbox.click();
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
-  // Upload images.
+  return await fillAndPublish(
+    page,
+    dialog,
+    textbox,
+    text,
+    imagePaths,
+    group.url,
+    /*alreadyTyped=*/ true,
+  );
+}
+
+/**
+ * Continues after the textbox is filled: uploads images, clicks publish, captures URL.
+ * Extracted because we want it to work both for dialog and inline composer.
+ */
+async function fillAndPublish(
+  page,
+  scope,
+  textbox,
+  text,
+  imagePaths,
+  groupUrl,
+  alreadyTyped = false,
+) {
+  if (!alreadyTyped) {
+    await textbox.click();
+    await human.humanType(textbox, text);
+    await human.sleep(human.randInt(800, 2000));
+  }
+
+  // Upload images if any
   if (imagePaths && imagePaths.length) {
     try {
-      await clickByRoleNameRegex(dialog, "button", RE_ATTACH_PHOTO, {
+      await clickByRoleNameRegex(scope, "button", RE_ATTACH_PHOTO, {
         timeout: 6000,
       });
       await human.sleep(human.randInt(700, 1500));
@@ -390,22 +430,23 @@ async function postToGroup(page, group, text, imagePaths) {
     }
     if (!target) throw new Error("no file input found in composer");
     await target.setInputFiles(imagePaths);
-    await waitForUploadsToFinish(dialog);
+    await waitForUploadsToFinish(scope);
   }
 
   await human.sleep(human.randInt(2000, 5000));
 
-  const publishBtn = await findPublishButton(dialog);
+  const publishBtn = await findPublishButton(scope);
   if (!publishBtn) throw new Error("publish button not found / disabled");
 
   await publishBtn.scrollIntoViewIfNeeded().catch(() => {});
   await human.sleep(human.randInt(400, 900));
   await publishBtn.click({ delay: human.randInt(60, 180) });
 
-  await dialog.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
+  // Wait for the dialog/composer to close
+  await scope.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
   await human.sleep(human.randInt(4000, 8000));
 
-  return await captureMostRecentPostUrl(page, group.url);
+  return await captureMostRecentPostUrl(page, groupUrl);
 }
 
 async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
