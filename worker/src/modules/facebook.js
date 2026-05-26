@@ -277,24 +277,68 @@ async function deletePost(page, postUrl) {
   }
 }
 
-// =============================================================================
-// Post to a group
-// =============================================================================
-// REMPLACE ta fonction postToGroup() existante dans facebook.js par celle-ci.
-// (Le reste du fichier reste identique.)
-// Le helper fillAndPublish est aussi inclus.
+// REMPLACE le DÉBUT de postToGroup() dans facebook.js par ceci.
+// (Garde tout ce qui vient après les "==== END DEBUG ====")
 
 async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, {
     waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
-  await human.sleep(human.randInt(3000, 6000));
+  await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
-  await human.microScroll(page);
-  await human.sleep(human.randInt(1500, 2500));
 
-  // === DEBUG: dump page state at start of postToGroup ===
+  // ---- Wait for the group content to actually load ----
+  // The group page loads in 2 phases: shell (instant) then group content (lazy XHR).
+  // On Render free tier (0.1 CPU) the second phase can take 10-20 seconds.
+  // We poll for the composer placeholder text, which appears once content is loaded.
+  const composerPlaceholders = [
+    /exprimez-vous/i,
+    /exprime-toi/i,
+    /écrivez quelque chose/i,
+    /écris quelque chose/i,
+    /quoi de neuf/i,
+    /qu'avez-vous.*tête/i,
+    /qu'est-ce que vous.*tête/i,
+    /write something/i,
+    /create.*post/i,
+    /what's on your mind/i,
+    /qué estás pensando/i,
+  ];
+
+  logger.info({ groupUrl: group.url }, "waiting for group content to load");
+
+  let composerVisible = false;
+  const startWait = Date.now();
+  const MAX_WAIT_MS = 45_000; // 45 sec max
+
+  while (Date.now() - startWait < MAX_WAIT_MS) {
+    // Try each placeholder regex to see if it's visible
+    for (const re of composerPlaceholders) {
+      try {
+        const el = page.getByText(re).first();
+        if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+          composerVisible = true;
+          break;
+        }
+      } catch (_) {
+        /* try next */
+      }
+    }
+    if (composerVisible) break;
+
+    // Scroll a tiny bit to nudge lazy loading
+    await page.evaluate(() => window.scrollBy(0, 50)).catch(() => {});
+    await human.sleep(1500);
+  }
+
+  const waitMs = Date.now() - startWait;
+  logger.info(
+    { waitMs, composerVisible },
+    "finished waiting for group content",
+  );
+
+  // ---- DEBUG: dump page state ----
   try {
     const pageUrl = page.url();
     const pageTitle = await page.title().catch(() => "");
@@ -310,42 +354,28 @@ async function postToGroup(page, group, text, imagePaths) {
         }))
         .filter((x) => x.text || x.aria);
     });
-    const placeholdersDom = await page.evaluate(() => {
-      const all = Array.from(
-        document.querySelectorAll("[placeholder], [data-placeholder]"),
-      );
-      return all.slice(0, 10).map((e) => ({
-        tag: e.tagName,
-        placeholder:
-          e.getAttribute("placeholder") || e.getAttribute("data-placeholder"),
-      }));
-    });
     logger.info(
-      { groupUrl: group.url, pageUrl, pageTitle, buttonNames, placeholdersDom },
+      {
+        groupUrl: group.url,
+        pageUrl,
+        pageTitle,
+        buttonNames,
+        composerVisible,
+        waitMs,
+      },
       "debug: arrived on group page",
     );
   } catch (e) {
     logger.warn({ err: e.message }, "debug snapshot failed");
   }
-  // === END DEBUG ===
+
+  if (!composerVisible) {
+    throw new Error(
+      `composer did not appear within ${MAX_WAIT_MS}ms (page not fully loaded)`,
+    );
+  }
 
   // ---- Open the composer ----
-  // Multi-strategy approach. We try several ways because FB changes its UI often.
-
-  const composerPlaceholders = [
-    /exprimez-vous/i,
-    /exprime-toi/i,
-    /écrivez quelque chose/i,
-    /écris quelque chose/i,
-    /quoi de neuf/i,
-    /qu'avez-vous.*tête/i,
-    /qu'est-ce que vous.*tête/i,
-    /write something/i,
-    /create.*post/i,
-    /what's on your mind/i,
-    /qué estás pensando/i,
-  ];
-
   let opened = false;
   let matchedStrategy = null;
 
@@ -370,7 +400,6 @@ async function postToGroup(page, group, text, imagePaths) {
   if (!opened) {
     for (const re of composerPlaceholders) {
       try {
-        // Find a clickable ancestor with role=button containing the text
         const el = page.locator('[role="button"]', { hasText: re }).first();
         if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
           await el.scrollIntoViewIfNeeded().catch(() => {});
@@ -386,26 +415,12 @@ async function postToGroup(page, group, text, imagePaths) {
     }
   }
 
-  // Strategy 3: click on the "Photo/Vidéo" attach button — sometimes opens the composer
-  if (!opened) {
-    try {
-      await clickByRoleNameRegex(page, "button", RE_ATTACH_PHOTO, {
-        timeout: 4000,
-      });
-      opened = true;
-      matchedStrategy = "attach-photo-button";
-    } catch (_) {
-      /* fallthrough */
-    }
-  }
-
   if (opened) {
     logger.info({ strategy: matchedStrategy }, "composer opened");
   } else {
     throw new Error("composer not found (no strategy worked)");
   }
 
-  // ---- Wait for either a dialog OR an inline textbox ----
   let scope = null;
   let textbox = null;
 
