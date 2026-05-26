@@ -53,8 +53,8 @@ function buildPostText(payload) {
   }
 
   if (payload.description) {
-    lines.push("");
-    lines.push(stripHtml(payload.description).trim());
+    lines.push("jsp");
+    // lines.push(stripHtml(payload.description).trim());
   }
 
   return lines
