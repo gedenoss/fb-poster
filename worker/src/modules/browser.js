@@ -8,6 +8,7 @@ const { sleep } = require("../utils/human");
 
 /**
  * Launch a Chromium with the latest known session.
+ * Tuned to keep memory low (Render free tier = 512 MB).
  */
 async function launch({ pullFresh = true } = {}) {
   if (pullFresh) {
@@ -21,9 +22,47 @@ async function launch({ pullFresh = true } = {}) {
   const browser = await chromium.launch({
     headless: config.browser.headless,
     args: [
+      // Stealth / anti-bot
       "--disable-blink-features=AutomationControlled",
+
+      // Required for containers without proper IPC namespace
       "--no-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-setuid-sandbox",
+
+      // Memory savers — significantly reduce Chromium's footprint
+      "--single-process", // Run renderer in same process (saves ~100MB)
+      "--no-zygote", // Skip the zygote process
+      "--disable-gpu", // No GPU in headless
+      "--disable-accelerated-2d-canvas",
+      "--disable-software-rasterizer",
+
+      // Disable heavy / unneeded features
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-breakpad",
+      "--disable-client-side-phishing-detection",
+      "--disable-component-update",
+      "--disable-default-apps",
+      "--disable-domain-reliability",
+      "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,TranslateUI",
+      "--disable-hang-monitor",
+      "--disable-ipc-flooding-protection",
+      "--disable-popup-blocking",
+      "--disable-prompt-on-repost",
+      "--disable-renderer-backgrounding",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--mute-audio",
+      "--no-default-browser-check",
+      "--no-first-run",
+      "--no-pings",
+
+      // Reduce memory pressure
+      "--memory-pressure-off",
+      "--max_old_space_size=400",
     ],
   });
 
@@ -35,11 +74,22 @@ async function launch({ pullFresh = true } = {}) {
     storageState,
     locale: config.browser.locale,
     userAgent: config.browser.userAgent || undefined,
-    viewport: { width: 1366, height: 820 },
+    viewport: { width: 1280, height: 720 }, // smaller viewport = less rendering
     timezoneId: "Europe/Paris",
     extraHTTPHeaders: {
       "Accept-Language": `${config.browser.locale},en;q=0.7`,
     },
+    // Block heavy resources to save memory + bandwidth
+    // (Note: FB still works without videos/fonts)
+  });
+
+  // Block heavy resources (videos, fonts) to reduce memory consumption
+  await ctx.route("**/*", (route) => {
+    const type = route.request().resourceType();
+    if (type === "media" || type === "font") {
+      return route.abort();
+    }
+    return route.continue();
   });
 
   await ctx.addInitScript(() => {
@@ -51,15 +101,9 @@ async function launch({ pullFresh = true } = {}) {
 }
 
 /**
- * Visit a page that requires authentication and decide whether we're logged in.
- *
- * We hit /me — Facebook's "redirect to current user's profile" alias.
- * - If logged in → redirects to https://www.facebook.com/<username>
- * - If NOT logged in → redirects to https://www.facebook.com/login/
- *
- * This is a much stronger signal than checking the public landing page.
- *
- * Returns 'ok' | 'login_required' | 'checkpoint' | 'unknown'.
+ * Visit /me and decide whether we're logged in.
+ * Logged in → redirected to profile URL.
+ * Not logged in → redirected to /login.
  */
 async function checkSession(page) {
   try {
@@ -72,7 +116,6 @@ async function checkSession(page) {
     return "unknown";
   }
 
-  // Give the page a bit more time to settle (slow datacenter IPs)
   await sleep(4000);
 
   const url = page.url();
@@ -80,12 +123,9 @@ async function checkSession(page) {
 
   logger.info({ url, title }, "checkSession: landed");
 
-  // Hard signals from URL
   if (/\/checkpoint/i.test(url)) return "checkpoint";
   if (/\/login/i.test(url)) return "login_required";
 
-  // /me redirected somewhere else AND it's not /login or /checkpoint → logged in
-  // (typically https://www.facebook.com/<username> or /profile.php?id=...)
   if (!/\/me\/?$/.test(url)) {
     logger.info(
       { finalUrl: url },
@@ -94,7 +134,6 @@ async function checkSession(page) {
     return "ok";
   }
 
-  // If we're still on /me, double-check with content indicators
   const indicators = [
     '[aria-label*="Create a post" i]',
     '[aria-label*="Créer une publication" i]',
@@ -120,4 +159,4 @@ async function checkSession(page) {
 }
 
 module.exports = { launch, checkSession };
-//v2
+//v4
