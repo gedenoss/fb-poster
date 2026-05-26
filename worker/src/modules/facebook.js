@@ -284,10 +284,7 @@ async function deletePost(page, postUrl) {
 // (Le reste du fichier reste inchangé.)
 
 async function postToGroup(page, group, text, imagePaths) {
-  await page.goto(group.url, {
-    waitUntil: "domcontentloaded",
-    timeout: 60_000,
-  });
+  await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
 

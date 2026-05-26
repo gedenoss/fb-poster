@@ -6,10 +6,6 @@ const logger = require("../utils/logger");
 const session = require("./session");
 const { sleep } = require("../utils/human");
 
-/**
- * Launch a Chromium with the latest known session.
- * Tuned to keep memory low (Render free tier = 512 MB).
- */
 async function launch({ pullFresh = true } = {}) {
   if (pullFresh) {
     try {
@@ -22,22 +18,18 @@ async function launch({ pullFresh = true } = {}) {
   const browser = await chromium.launch({
     headless: config.browser.headless,
     args: [
-      // Stealth / anti-bot
       "--disable-blink-features=AutomationControlled",
-
-      // Required for containers without proper IPC namespace
       "--no-sandbox",
       "--disable-dev-shm-usage",
       "--disable-setuid-sandbox",
 
-      // Memory savers — significantly reduce Chromium's footprint
-      "--single-process", // Run renderer in same process (saves ~100MB)
-      "--no-zygote", // Skip the zygote process
-      "--disable-gpu", // No GPU in headless
+      // Memory savers — aggressive
+      "--single-process",
+      "--no-zygote",
+      "--disable-gpu",
       "--disable-accelerated-2d-canvas",
       "--disable-software-rasterizer",
 
-      // Disable heavy / unneeded features
       "--disable-extensions",
       "--disable-background-networking",
       "--disable-background-timer-throttling",
@@ -47,22 +39,31 @@ async function launch({ pullFresh = true } = {}) {
       "--disable-component-update",
       "--disable-default-apps",
       "--disable-domain-reliability",
-      "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,TranslateUI",
+      "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process,TranslateUI,BlinkGenPropertyTrees",
       "--disable-hang-monitor",
       "--disable-ipc-flooding-protection",
       "--disable-popup-blocking",
       "--disable-prompt-on-repost",
       "--disable-renderer-backgrounding",
       "--disable-sync",
+      "--disable-translate",
       "--metrics-recording-only",
       "--mute-audio",
       "--no-default-browser-check",
       "--no-first-run",
       "--no-pings",
+      "--password-store=basic",
+      "--use-mock-keychain",
 
-      // Reduce memory pressure
       "--memory-pressure-off",
-      "--max_old_space_size=400",
+      "--max_old_space_size=300", // hard cap V8 at 300MB
+
+      // Disable Chrome's image rendering on the GPU
+      "--disable-gpu-rasterization",
+      "--disable-2d-canvas-image-chromium",
+
+      // Smaller window means less to render
+      "--window-size=1024,768",
     ],
   });
 
@@ -74,21 +75,43 @@ async function launch({ pullFresh = true } = {}) {
     storageState,
     locale: config.browser.locale,
     userAgent: config.browser.userAgent || undefined,
-    viewport: { width: 1280, height: 720 }, // smaller viewport = less rendering
+    viewport: { width: 1024, height: 768 }, // smaller viewport (~30% less pixels)
     timezoneId: "Europe/Paris",
     extraHTTPHeaders: {
       "Accept-Language": `${config.browser.locale},en;q=0.7`,
     },
-    // Block heavy resources to save memory + bandwidth
-    // (Note: FB still works without videos/fonts)
+
+    // No service workers, no JS-heavy features
+    serviceWorkers: "block",
   });
 
-  // Block heavy resources (videos, fonts) to reduce memory consumption
+  // ====================================================================
+  // AGGRESSIVE RESOURCE BLOCKING
+  // Block everything we don't strictly need. FB still works, just uglier.
+  // ====================================================================
   await ctx.route("**/*", (route) => {
-    const type = route.request().resourceType();
-    if (type === "media" || type === "font") {
+    const req = route.request();
+    const type = req.resourceType();
+    const url = req.url();
+
+    // Block all media, fonts, images (heavy + we don't render them)
+    if (type === "media" || type === "font" || type === "image") {
       return route.abort();
     }
+
+    // Block tracking, analytics, ads, video
+    if (
+      /\b(analytics|tracking|telemetry|metrics|beacon|pixel|adservice|ads)\b/i.test(
+        url,
+      ) ||
+      /\.(mp4|webm|ogg|m4a|m4v|mov)(\?|$)/i.test(url) ||
+      /facebook\.com\/(rsrc\.php|tr|tr\/|ajax\/bz|ajax\/bnzai|ajax\/log)/i.test(
+        url,
+      )
+    ) {
+      return route.abort();
+    }
+
     return route.continue();
   });
 
@@ -100,11 +123,6 @@ async function launch({ pullFresh = true } = {}) {
   return { browser, context: ctx, page };
 }
 
-/**
- * Visit /me and decide whether we're logged in.
- * Logged in → redirected to profile URL.
- * Not logged in → redirected to /login.
- */
 async function checkSession(page) {
   try {
     await page.goto("https://www.facebook.com/me", {
@@ -159,4 +177,3 @@ async function checkSession(page) {
 }
 
 module.exports = { launch, checkSession };
-//v4

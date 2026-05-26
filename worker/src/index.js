@@ -125,9 +125,9 @@ function reloginAuth(req, res, next) {
 }
 
 // --- Health -----------------------------------------------------------------
-app.get("/healthz", async (_req, res) => {
-  const s = await db.getSessionState().catch(() => null);
-  res.json({ ok: true, busy, session: s?.status || "unknown" });
+// APRÈS (réponse instantanée même quand Chromium tourne) :
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true, busy });
 });
 
 // --- Trigger (called by the Edge Function) ----------------------------------

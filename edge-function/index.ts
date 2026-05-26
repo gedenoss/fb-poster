@@ -22,6 +22,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WORKER_URL = Deno.env.get("WORKER_URL") ?? "";
 const WORKER_PUBLIC_URL = Deno.env.get("WORKER_PUBLIC_URL") ?? "";
 const WORKER_SECRET = Deno.env.get("WORKER_SECRET") ?? "";
+const RELOGIN_TOKEN = Deno.env.get("RELOGIN_TOKEN") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -149,8 +150,12 @@ async function handleSession(): Promise<Response> {
 
 async function maybeReloginPayload(status: string | null | undefined) {
   if (status !== "needs_login") return {};
+  let url = WORKER_PUBLIC_URL ? `${WORKER_PUBLIC_URL}/relogin` : null;
+  if (url && RELOGIN_TOKEN) {
+    url = `${url}?token=${encodeURIComponent(RELOGIN_TOKEN)}`;
+  }
   return {
-    relogin_url: WORKER_PUBLIC_URL ? `${WORKER_PUBLIC_URL}/relogin` : null,
+    relogin_url: url,
   };
 }
 
