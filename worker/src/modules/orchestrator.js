@@ -124,6 +124,12 @@ async function runJob(job) {
       } catch (err) {
         if (err instanceof SkippedPendingError) {
           logger.info({ group: group.name }, "post annulé — publication déjà en attente");
+          result.posts.push({
+            group_id: group.id,
+            group_name: group.name,
+            status: "skipped",
+            reason: "already_pending",
+          });
           await db.log({ jobId, groupId: group.id, action: "post_skipped_pending", level: "info" });
         } else {
           logger.warn(
@@ -181,8 +187,9 @@ async function runJob(job) {
   }
 
   const failed = result.posts.filter((p) => p.status === "failed").length;
+  const posted = result.posts.filter((p) => p.status === "success").length;
   result.status =
-    failed === result.posts.length && result.posts.length > 0
+    failed > 0 && posted === 0
       ? "failed"
       : failed > 0
         ? "partial"
