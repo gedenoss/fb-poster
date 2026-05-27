@@ -534,8 +534,14 @@ async function postToGroup(page, group, text, imagePaths) {
   // ====================================================================
   // Fill textbox + upload images
   // ====================================================================
-  // Use force: true + short timeout to avoid 30s hangs on unstable DOM
-  await textbox.click({ force: true, timeout: 5000 });
+  // Use force: true with longer timeout for scroll + click on unstable DOM
+  try {
+    await textbox.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {});
+    await human.sleep(300);
+  } catch (_) {
+    // ignore scroll errors
+  }
+  await textbox.click({ force: true, timeout: 15000 });
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
