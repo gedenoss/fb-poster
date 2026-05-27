@@ -16,34 +16,27 @@ const { retry } = require("../utils/retry");
 
 const TIMEOUT = 30_000;
 
-class PendingModerationError extends Error {
-  constructor(reason) {
-    super(reason || 'post pending moderation');
-    this.name = 'PendingModerationError';
+class SkippedPendingError extends Error {
+  constructor() {
+    super('already_pending');
+    this.name = 'SkippedPendingError';
   }
 }
 
-// Textes détectés AVANT le post (publication déjà en attente)
+// Textes indiquant qu'une publication est déjà en attente de modération dans ce groupe
 const RE_PENDING_BEFORE = [
   /vous avez une publication en attente/i,
   /you have a pending post/i,
   /tienes una publicación pendiente/i,
   /publication.*en attente/i,
-];
-
-// Textes détectés APRÈS le post (modérateur doit valider)
-const RE_PENDING_AFTER = [
   /en attente de révision/i,
-  /votre publication est en attente/i,
-  /your post is pending/i,
-  /pending.*review/i,
   /en attente d.approbation/i,
-  /administrator.*review/i,
-  /administrateur.*vérifi/i,
+  /pending.*review/i,
+  /awaiting.*approval/i,
 ];
 
-async function hasPendingText(page, patterns) {
-  for (const re of patterns) {
+async function hasPendingText(page) {
+  for (const re of RE_PENDING_BEFORE) {
     try {
       if (await page.getByText(re).first().isVisible({ timeout: 1200 }).catch(() => false)) {
         return true;
@@ -326,9 +319,9 @@ async function postToGroup(page, group, text, imagePaths) {
   await dismissCookieBanner(page);
 
   // ---- Vérifier si une publication est déjà en attente de modération ----
-  if (await hasPendingText(page, RE_PENDING_BEFORE)) {
+  if (await hasPendingText(page)) {
     logger.info({ groupUrl: group.url }, 'publication déjà en attente de modération — groupe ignoré');
-    throw new PendingModerationError('already_pending');
+    throw new SkippedPendingError();
   }
 
   const composerPlaceholders = [
@@ -541,12 +534,6 @@ async function postToGroup(page, group, text, imagePaths) {
   }
   await human.sleep(human.randInt(4000, 8000));
 
-  // ---- Vérifier si le post est parti en modération après publication ----
-  if (await hasPendingText(page, RE_PENDING_AFTER)) {
-    logger.info({ groupUrl: group.url }, 'post soumis mais en attente de modération');
-    throw new PendingModerationError('submitted_pending');
-  }
-
   return await captureMostRecentPostUrl(page, group.url);
 }
 
@@ -624,5 +611,5 @@ module.exports = {
   postToGroup,
   loginWithCredentials,
   submitTwoFactor,
-  PendingModerationError,
+  SkippedPendingError,
 };

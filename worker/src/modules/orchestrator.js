@@ -8,7 +8,7 @@ const session = require("./session");
 const images = require("./images");
 const content = require("./content");
 const facebook = require("./facebook");
-const { PendingModerationError } = facebook;
+const { SkippedPendingError } = facebook;
 const human = require("../utils/human");
 const { slack } = require("../utils/notify");
 
@@ -122,21 +122,9 @@ async function runJob(job) {
           message: postUrl,
         });
       } catch (err) {
-        if (err instanceof PendingModerationError) {
-          logger.info({ group: group.url, reason: err.message }, "post en attente de modération");
-          result.posts.push({
-            group_id: group.id,
-            group_name: group.name,
-            status: "pending_moderation",
-            error: err.message,
-          });
-          await db.log({
-            jobId,
-            groupId: group.id,
-            action: "post_pending_moderation",
-            level: "info",
-            message: err.message,
-          });
+        if (err instanceof SkippedPendingError) {
+          logger.info({ group: group.name }, "post annulé — publication déjà en attente");
+          await db.log({ jobId, groupId: group.id, action: "post_skipped_pending", level: "info" });
         } else {
           logger.warn(
             { err: err.message, group: group.url },
@@ -193,11 +181,10 @@ async function runJob(job) {
   }
 
   const failed = result.posts.filter((p) => p.status === "failed").length;
-  const pending = result.posts.filter((p) => p.status === "pending_moderation").length;
   result.status =
     failed === result.posts.length && result.posts.length > 0
       ? "failed"
-      : failed > 0 || pending > 0
+      : failed > 0
         ? "partial"
         : "completed";
 
