@@ -528,12 +528,14 @@ async function postToGroup(page, group, text, imagePaths) {
     throw new Error(`composer opened but no textbox/dialog: ${e.message}`);
   }
 
-  await human.sleep(human.randInt(800, 1800));
+  // Wait longer for Facebook to fully stabilize the composer DOM
+  await human.sleep(human.randInt(2500, 5000));
 
   // ====================================================================
   // Fill textbox + upload images
   // ====================================================================
-  await textbox.click();
+  // Use force: true + short timeout to avoid 30s hangs on unstable DOM
+  await textbox.click({ force: true, timeout: 5000 });
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
