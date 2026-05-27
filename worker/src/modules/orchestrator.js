@@ -8,6 +8,7 @@ const session = require("./session");
 const images = require("./images");
 const content = require("./content");
 const facebook = require("./facebook");
+const { PendingModerationError } = facebook;
 const human = require("../utils/human");
 const { slack } = require("../utils/notify");
 
@@ -121,29 +122,46 @@ async function runJob(job) {
           message: postUrl,
         });
       } catch (err) {
-        logger.warn(
-          { err: err.message, group: group.url },
-          "post failed; skipping group",
-        );
-        await db.recordFailedPost({
-          propertyId,
-          groupId: group.id,
-          jobId,
-          error: err.message,
-        });
-        result.posts.push({
-          group_id: group.id,
-          group_name: group.name,
-          status: "failed",
-          error: err.message,
-        });
-        await db.log({
-          jobId,
-          groupId: group.id,
-          action: "post_failed",
-          level: "error",
-          message: err.message,
-        });
+        if (err instanceof PendingModerationError) {
+          logger.info({ group: group.url, reason: err.message }, "post en attente de modération");
+          result.posts.push({
+            group_id: group.id,
+            group_name: group.name,
+            status: "pending_moderation",
+            error: err.message,
+          });
+          await db.log({
+            jobId,
+            groupId: group.id,
+            action: "post_pending_moderation",
+            level: "info",
+            message: err.message,
+          });
+        } else {
+          logger.warn(
+            { err: err.message, group: group.url },
+            "post failed; skipping group",
+          );
+          await db.recordFailedPost({
+            propertyId,
+            groupId: group.id,
+            jobId,
+            error: err.message,
+          });
+          result.posts.push({
+            group_id: group.id,
+            group_name: group.name,
+            status: "failed",
+            error: err.message,
+          });
+          await db.log({
+            jobId,
+            groupId: group.id,
+            action: "post_failed",
+            level: "error",
+            message: err.message,
+          });
+        }
       }
 
       await human.idleMouseMove(page).catch(() => {});
@@ -174,11 +192,12 @@ async function runJob(job) {
     await human.sleep(500);
   }
 
-  const failed = result.posts.filter((p) => p.status !== "success").length;
+  const failed = result.posts.filter((p) => p.status === "failed").length;
+  const pending = result.posts.filter((p) => p.status === "pending_moderation").length;
   result.status =
     failed === result.posts.length && result.posts.length > 0
       ? "failed"
-      : failed > 0
+      : failed > 0 || pending > 0
         ? "partial"
         : "completed";
 
