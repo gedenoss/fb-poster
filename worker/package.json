@@ -9,7 +9,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node --expose-gc --max-old-space-size=512 src/index.js",
     "dev": "HEADLESS=false node --watch src/index.js",
     "install:browser": "playwright install --with-deps chromium",
     "postinstall": "playwright install chromium || true"

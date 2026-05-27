@@ -158,8 +158,20 @@ async function runJob(job) {
       logger.warn({ err: e.message }, "session save failed");
     }
   } finally {
-    await br.close().catch(() => {});
+    // Close all resources in order
+    try {
+      await page.close().catch(() => {});
+    } catch (_) {}
+    try {
+      await context.close().catch(() => {});
+    } catch (_) {}
+    try {
+      await br.close().catch(() => {});
+    } catch (_) {}
     await images.cleanup().catch(() => {});
+
+    // Wait a bit before returning to let OS free resources
+    await human.sleep(500);
   }
 
   const failed = result.posts.filter((p) => p.status !== "success").length;
@@ -179,6 +191,14 @@ async function runJob(job) {
     },
     "job done",
   );
+
+  // Force garbage collection if available
+  if (global.gc) {
+    try {
+      global.gc();
+      logger.debug("forced gc after job");
+    } catch (_) {}
+  }
 
   return result;
 }
