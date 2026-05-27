@@ -17,6 +17,7 @@ async function launch({ pullFresh = true } = {}) {
 
   const browser = await chromium.launch({
     headless: config.browser.headless,
+    ...(config.browser.executablePath ? { executablePath: config.browser.executablePath } : {}),
     args: [
       "--disable-blink-features=AutomationControlled",
       "--no-sandbox",

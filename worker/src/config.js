@@ -40,9 +40,10 @@ const config = {
     objectKey:  process.env.SESSION_OBJECT_KEY || 'state.json',
   },
   browser: {
-    headless:   bool('HEADLESS', true),
-    locale:     process.env.BROWSER_LOCALE || 'fr-FR',
-    userAgent:  process.env.USER_AGENT || '',
+    headless:        bool('HEADLESS', true),
+    locale:          process.env.BROWSER_LOCALE || 'fr-FR',
+    userAgent:       process.env.USER_AGENT || '',
+    executablePath:  process.env.CHROMIUM_EXECUTABLE_PATH || '',
   },
   loop: {
     pollIntervalMs: int('POLL_INTERVAL_MS', 10000),
