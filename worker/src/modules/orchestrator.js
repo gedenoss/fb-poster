@@ -1,4 +1,3 @@
-// src/modules/orchestrator.js
 "use strict";
 const logger = require("../utils/logger");
 const config = require("../config");
@@ -12,13 +11,6 @@ const { SkippedPendingError } = facebook;
 const human = require("../utils/human");
 const { notify } = require("../utils/notify");
 
-/**
- * Run a single posting job end-to-end.
- *
- * Returns:
- *   { status, posts }      on success / partial / failed
- *   { needsLogin: true }   on session-required failure (caller flips status to needs_login)
- */
 async function runJob(job) {
   const jobId = job.id;
   const propertyId = job.property_id;
@@ -53,7 +45,6 @@ async function runJob(job) {
   const result = { status: "completed", posts: [] };
 
   try {
-    // ---- Session check ----
     const state = await browser.checkSession(page);
     await db.setSessionState(state === "ok" ? "ok" : "needs_login", {
       checked: true,
@@ -75,9 +66,6 @@ async function runJob(job) {
     }
     await db.log({ jobId, action: "session_ok" });
 
-    // ---- Delete previous posts (DISABLED for now) ----
-    // Pour l'instant on saute la suppression — on validera le posting d'abord
-    // puis on rebranchera proprement avec une UI de confirmation.
     if (previous.length > 0) {
       await db.log({
         jobId,
@@ -88,13 +76,11 @@ async function runJob(job) {
       });
     }
 
-    // ---- Post in each group ----
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
 
-      // Recycle le browser tous les N groupes pour libérer la RAM
       if (i > 0 && i % config.loop.browserRecycleEvery === 0) {
-        logger.info({ i }, "recyclage browser — libération RAM");
+        logger.info({ i }, "browser recycle");
         try { await page.close(); } catch (_) {}
         try { await context.close(); } catch (_) {}
         try { await br.close(); } catch (_) {}
@@ -176,21 +162,18 @@ async function runJob(job) {
       await human.microScroll(page).catch(() => {});
       await human.randomDelay();
 
-      // Délai long entre groupes pour lisser sur la durée et éviter le ban
       if (i < groups.length - 1) {
-        logger.info({ delayMs: config.loop.groupDelayMs, next: groups[i + 1].name }, "pause entre groupes");
+        logger.info({ delayMs: config.loop.groupDelayMs, next: groups[i + 1].name }, "inter-group delay");
         await human.sleep(config.loop.groupDelayMs);
       }
     }
 
-    // ---- Persist session ----
     try {
       await session.save(context);
     } catch (e) {
       logger.warn({ err: e.message }, "session save failed");
     }
   } finally {
-    // Close all resources in order
     try {
       await page.close().catch(() => {});
     } catch (_) {}
@@ -201,8 +184,6 @@ async function runJob(job) {
       await br.close().catch(() => {});
     } catch (_) {}
     await images.cleanup().catch(() => {});
-
-    // Wait a bit before returning to let OS free resources
     await human.sleep(500);
   }
 
@@ -225,15 +206,8 @@ async function runJob(job) {
     "job done",
   );
 
-  // Force garbage collection if available
-  if (global.gc) {
-    try {
-      global.gc();
-      logger.debug("forced gc after job");
-    } catch (_) {}
-  }
+  if (global.gc) try { global.gc(); } catch (_) {}
 
-  // ---- Notification Discord ----
   const durationMin = Math.round((Date.now() - t0) / 60000);
   if (result.status === "completed") {
     const lines = result.posts

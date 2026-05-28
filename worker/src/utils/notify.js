@@ -1,4 +1,3 @@
-// src/utils/notify.js
 'use strict';
 const config = require('../config');
 const logger = require('./logger');

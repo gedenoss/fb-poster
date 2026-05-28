@@ -1,4 +1,3 @@
-// src/index.js
 "use strict";
 const path = require("path");
 const express = require("express");
@@ -7,9 +6,7 @@ const logger = require("./utils/logger");
 const db = require("./modules/db");
 const { runJob, reloginLink } = require("./modules/orchestrator");
 const relogin = require("./modules/relogin");
-// =============================================================================
-// Single in-flight lock — one job at a time per worker
-// =============================================================================
+
 let busy = false;
 
 async function tryProcessNext({ jobId } = {}) {
@@ -52,13 +49,9 @@ async function tryProcessNext({ jobId } = {}) {
   }
 }
 
-// =============================================================================
-// HTTP server
-// =============================================================================
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-// --- Middleware -------------------------------------------------------------
 function workerAuth(req, res, next) {
   if (!config.http.secret) return next();
   if (req.get("x-worker-key") !== config.http.secret) {
@@ -78,13 +71,10 @@ function reloginAuth(req, res, next) {
   next();
 }
 
-// --- Health -----------------------------------------------------------------
-// APRÈS (réponse instantanée même quand Chromium tourne) :
 app.get("/healthz", (_req, res) => {
   res.json({ ok: true, busy });
 });
 
-// --- Trigger (called by the Edge Function) ----------------------------------
 app.post("/trigger", workerAuth, async (req, res) => {
   const jobId = (req.body && req.body.job_id) || null;
   res.json({ status: "accepted", job_id: jobId });
@@ -98,7 +88,6 @@ app.post("/trigger", workerAuth, async (req, res) => {
   });
 });
 
-// --- Re-login (Phase 1: email + password) -----------------------------------
 app.get("/relogin", reloginAuth, (_req, res) => {
   res.sendFile(path.resolve(__dirname, "public/relogin.html"));
 });
@@ -112,7 +101,6 @@ app.post("/api/relogin/start", reloginAuth, async (req, res) => {
   res.json(r);
 });
 
-// --- Re-login (Phase 2: 2FA code) -------------------------------------------
 app.post("/api/relogin/2fa", reloginAuth, async (req, res) => {
   const { pendingToken, code } = req.body || {};
   if (!pendingToken || !code) {
@@ -122,9 +110,6 @@ app.post("/api/relogin/2fa", reloginAuth, async (req, res) => {
   res.json(r);
 });
 
-// =============================================================================
-// Polling loop
-// =============================================================================
 async function pollLoop() {
   while (true) {
     try {
@@ -137,9 +122,6 @@ async function pollLoop() {
   }
 }
 
-// =============================================================================
-// Boot
-// =============================================================================
 app.listen(config.http.port, () => {
   logger.info(
     {
@@ -158,8 +140,13 @@ pollLoop().catch((e) => {
 });
 
 function shutdown(sig) {
-  logger.info({ sig }, "shutting down");
-  process.exit(0);
+  logger.info({ sig, busy }, "shutting down");
+  if (!busy) return process.exit(0);
+  const deadline = setTimeout(() => process.exit(0), 30_000);
+  deadline.unref();
+  const poll = setInterval(() => {
+    if (!busy) { clearInterval(poll); process.exit(0); }
+  }, 500);
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

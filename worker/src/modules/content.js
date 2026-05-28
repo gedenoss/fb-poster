@@ -1,4 +1,3 @@
-// src/modules/content.js
 "use strict";
 
 function formatPrice(value) {
@@ -24,43 +23,53 @@ function stripHtml(html) {
     .replace(/&quot;/g, '"');
 }
 
-/**
- * Spec format:
- *   Title
- *
- *   Price
- *   City
- *
- *   Description
- */
+function roomLabel(n) {
+  if (!n || n <= 0) return null;
+  return `${n} chambre${n > 1 ? "s" : ""}`;
+}
+
 function buildPostText(payload) {
-  const lines = [];
+  const price = formatPrice(payload.priceFrom);
+  const desc = payload.description ? stripHtml(payload.description).trim() : "";
+  const city = (payload.city || "").trim();
+  const title = (payload.title || "").trim();
+  const surface = payload.surface ? `${payload.surface} m²` : null;
+  const rooms = roomLabel(payload.bedrooms);
+  const available = payload.availableRooms > 0 ? payload.availableRooms : null;
 
-  if (payload.title) lines.push(payload.title.trim());
-  lines.push("");
+  const variant = Math.floor(Math.random() * 3);
 
-  const priceLine = formatPrice(payload.priceFrom);
-  if (priceLine) lines.push(`À partir de ${priceLine} / mois`);
-  if (payload.city) lines.push(payload.city.trim());
-
-  const meta = [];
-  if (payload.surface) meta.push(`${payload.surface} m²`);
-  if (payload.bedrooms)
-    meta.push(`${payload.bedrooms} chambre${payload.bedrooms > 1 ? "s" : ""}`);
-  if (meta.length) {
+  if (variant === 0) {
+    const lines = [title];
     lines.push("");
-    lines.push(meta.join(" · "));
+    if (desc) lines.push(desc, "");
+    const specs = [surface, rooms].filter(Boolean).join(" · ");
+    if (specs) lines.push(specs);
+    if (price) lines.push(`À partir de ${price} / mois`);
+    if (city) lines.push(`📍 ${city}`);
+    if (available) lines.push(`\n🛏 ${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} dès maintenant`);
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
-  if (payload.description) {
-    lines.push("jsp");
-    // lines.push(stripHtml(payload.description).trim());
+  if (variant === 1) {
+    const lines = [];
+    if (available) lines.push(`🏠 ${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} à ${city || "louer"} !`, "");
+    lines.push(title, "");
+    if (desc) lines.push(desc, "");
+    const specs = [surface, price ? `dès ${price} / mois` : null].filter(Boolean).join(" | ");
+    if (specs) lines.push(specs);
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
-  return lines
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  // variant 2
+  const lines = [];
+  const header = [title, city].filter(Boolean).join(" — ");
+  lines.push(header, "");
+  if (desc) lines.push(desc, "");
+  const specs = [surface, rooms, available ? `${available} disponible${available > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ");
+  if (specs) lines.push(specs);
+  if (price) lines.push(`À partir de ${price} / mois`);
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 module.exports = { buildPostText, formatPrice };

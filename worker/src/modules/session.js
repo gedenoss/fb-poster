@@ -1,4 +1,3 @@
-// src/modules/session.js
 'use strict';
 const fs   = require('fs');
 const fsp  = require('fs/promises');

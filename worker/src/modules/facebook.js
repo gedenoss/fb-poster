@@ -1,15 +1,4 @@
-// src/modules/facebook.js
 "use strict";
-/**
- * Facebook UI automation.
- *
- * We avoid brittle CSS class selectors. Instead we rely on:
- *   - getByRole('button', { name: /publier|publish|publicar/i })
- *   - aria-label patterns
- *   - <input type="file"> hidden behind the photo button
- *
- * Patterns cover FR / EN / ES.
- */
 const logger = require("../utils/logger");
 const human = require("../utils/human");
 const { retry } = require("../utils/retry");
@@ -23,16 +12,13 @@ class SkippedPendingError extends Error {
   }
 }
 
-// Textes indiquant qu'une publication est déjà en attente de modération dans ce groupe
 const RE_PENDING_BEFORE = [
   /vous avez une publication en attente/i,
   /you have a pending post/i,
   /tienes una publicación pendiente/i,
-  /publication.*en attente/i,
-  /en attente de révision/i,
-  /en attente d.approbation/i,
-  /pending.*review/i,
-  /awaiting.*approval/i,
+  /votre publication est en attente/i,
+  /your post is awaiting/i,
+  /your post is pending/i,
 ];
 
 async function hasPendingText(page) {
@@ -58,9 +44,6 @@ const RE_DELETE =
 const RE_CONFIRM_DELETE =
   /^(move|delete|supprimer|confirmer|eliminar|aceptar|confirmar)$/i;
 
-// =============================================================================
-// Helpers
-// =============================================================================
 async function findByRoleNameRegex(
   scope,
   role,
@@ -101,16 +84,6 @@ async function dismissCookieBanner(page) {
   }
 }
 
-// =============================================================================
-// LOGIN — used by /relogin
-// =============================================================================
-/**
- * Submit email + password on facebook.com/login and verify we land on the feed.
- *
- * @param {import('playwright').Page} page
- * @param {{ email: string, password: string }} creds
- * @returns {Promise<{ ok: boolean, reason?: 'bad_credentials' | 'checkpoint' | '2fa_required' | 'unknown' }>}
- */
 async function loginWithCredentials(page, { email, password }) {
   if (!email || !password) return { ok: false, reason: "bad_credentials" };
 
@@ -208,9 +181,6 @@ async function loginWithCredentials(page, { email, password }) {
   return { ok: false, reason: "unknown" };
 }
 
-/**
- * Submit a 2FA / approvals code on the checkpoint page.
- */
 async function submitTwoFactor(page, code) {
   const input = page
     .locator(
@@ -250,9 +220,6 @@ async function submitTwoFactor(page, code) {
     : { ok: true };
 }
 
-// =============================================================================
-// Delete a published post
-// =============================================================================
 async function deletePost(page, postUrl) {
   try {
     await page.goto(postUrl, {
@@ -307,20 +274,13 @@ async function deletePost(page, postUrl) {
   }
 }
 
-// REMPLACE le DÉBUT de postToGroup() dans facebook.js par ceci.
-// (Garde tout ce qui vient après les "==== END DEBUG ====")
-
-// REMPLACE postToGroup() en entier dans facebook.js par celle-ci.
-// (Le reste du fichier reste inchangé.)
-
 async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
 
-  // ---- Vérifier si une publication est déjà en attente de modération ----
   if (await hasPendingText(page)) {
-    logger.info({ groupUrl: group.url }, 'publication déjà en attente de modération — groupe ignoré');
+    logger.info({ groupUrl: group.url }, "pending post detected, skipping group");
     throw new SkippedPendingError();
   }
 
@@ -338,8 +298,7 @@ async function postToGroup(page, group, text, imagePaths) {
     /qué estás pensando/i,
   ];
 
-  // ---- Wait for the group content (composer placeholder) to be visible ----
-  logger.info({ groupUrl: group.url }, "waiting for group content to load");
+  logger.info({ groupUrl: group.url }, "waiting for composer");
 
   let matchedRe = null;
   const startWait = Date.now();
@@ -372,10 +331,6 @@ async function postToGroup(page, group, text, imagePaths) {
     throw new Error(`composer did not appear within ${MAX_WAIT_MS}ms`);
   }
 
-  // ---- Click the composer placeholder DIRECTLY ----
-  // We already know it's visible; no need to re-check.
-  // Use .click() with force:true to avoid Playwright's actionability checks
-  // that can hang on Facebook's animated UI.
   let opened = false;
 
   try {
@@ -395,7 +350,6 @@ async function postToGroup(page, group, text, imagePaths) {
     );
   }
 
-  // Fallback: click the closest role=button containing the placeholder text
   if (!opened) {
     try {
       const el = page
@@ -419,7 +373,6 @@ async function postToGroup(page, group, text, imagePaths) {
   }
 
   if (!opened) {
-    // ---- Last-ditch debug snapshot ----
     try {
       const pageUrl = page.url();
       const buttonNames = await page.evaluate(() => {
@@ -444,7 +397,6 @@ async function postToGroup(page, group, text, imagePaths) {
     throw new Error("composer not found (click failed)");
   }
 
-  // ---- Wait for either a dialog OR a textbox to appear ----
   let scope = null;
   let textbox = null;
 
@@ -485,12 +437,10 @@ async function postToGroup(page, group, text, imagePaths) {
 
   await human.sleep(human.randInt(800, 1800));
 
-  // ---- Fill the textbox ----
   await textbox.click();
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
-  // ---- Upload images ----
   if (imagePaths && imagePaths.length) {
     try {
       await clickByRoleNameRegex(scope, "button", RE_ATTACH_PHOTO, {
@@ -517,7 +467,6 @@ async function postToGroup(page, group, text, imagePaths) {
 
   await human.sleep(human.randInt(2000, 5000));
 
-  // ---- Publish ----
   const publishBtn = await findPublishButton(
     scope === page ? page.locator("body") : scope,
   );

@@ -1,4 +1,3 @@
-// src/utils/human.js
 'use strict';
 const config = require('../config');
 

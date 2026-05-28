@@ -1,4 +1,3 @@
-// src/utils/logger.js
 'use strict';
 const pino = require('pino');
 

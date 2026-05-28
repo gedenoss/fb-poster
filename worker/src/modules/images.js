@@ -1,4 +1,3 @@
-// src/modules/images.js
 "use strict";
 const fs = require("fs");
 const fsp = require("fs/promises");
@@ -30,9 +29,7 @@ async function downloadOne(url) {
   if (/^https?:\/\//i.test(url)) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status} downloading ${url}`);
-    const buf = await res.arrayBuffer();
-    await fsp.writeFile(dest, Buffer.from(buf));
-    buf = null; // Explicit release
+    await fsp.writeFile(dest, Buffer.from(await res.arrayBuffer()));
     return dest;
   }
 
@@ -41,11 +38,8 @@ async function downloadOne(url) {
   if (!bucket || !key) throw new Error(`Cannot parse storage path: ${url}`);
 
   const { data, error } = await supabase.storage.from(bucket).download(key);
-  if (error)
-    throw new Error(`storage download failed for ${url}: ${error.message}`);
-  const buf = await data.arrayBuffer();
-  await fsp.writeFile(dest, Buffer.from(buf));
-  buf = null; // Explicit release
+  if (error) throw new Error(`storage download failed for ${url}: ${error.message}`);
+  await fsp.writeFile(dest, Buffer.from(await data.arrayBuffer()));
   return dest;
 }
 
@@ -68,7 +62,6 @@ async function cleanup() {
     for (const f of await fsp.readdir(dir)) {
       await fsp.rm(path.join(dir, f), { force: true });
     }
-    logger.debug({ dir }, "image cache cleared");
   } catch (e) {
     logger.warn({ err: e.message }, "image cleanup failed");
   }

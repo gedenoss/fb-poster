@@ -1,4 +1,3 @@
-// src/modules/db.js
 "use strict";
 const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
@@ -10,9 +9,7 @@ const supabase = createClient(config.supabase.url, config.supabase.serviceKey, {
   realtime: { transport: WebSocket },
 });
 
-// -----------------------------------------------------------------------
 // Jobs
-// -----------------------------------------------------------------------
 async function claimNextJob() {
   const { data: row, error } = await supabase
     .from("fb_posting_jobs")
@@ -83,9 +80,7 @@ async function getStuckNeedsLoginJobs() {
   return data || [];
 }
 
-// -----------------------------------------------------------------------
 // Session state
-// -----------------------------------------------------------------------
 async function setSessionState(status, extra = {}) {
   const patch = {
     status,
@@ -109,9 +104,7 @@ async function getSessionState() {
   return data;
 }
 
-// -----------------------------------------------------------------------
 // Property payload
-// -----------------------------------------------------------------------
 async function fetchPropertyPayload(propertyId) {
   const { data: base, error } = await supabase
     .from("v_fb_property_payload")
@@ -144,15 +137,14 @@ async function fetchPropertyPayload(propertyId) {
     address: base.address || "",
     surface: base.surface_m2,
     bedrooms: base.bedrooms,
+    availableRooms: base.available_rooms ?? null,
     description: base.description || "",
     priceFrom: base.price_from,
     images: Array.from(new Set(images)).slice(0, 10),
   };
 }
 
-// -----------------------------------------------------------------------
 // Groups (with TEST_MODE filter)
-// -----------------------------------------------------------------------
 async function fetchActiveGroups({ city, zone } = {}) {
   let q = supabase
     .from("fb_groups")
@@ -178,9 +170,7 @@ async function fetchActiveGroups({ city, zone } = {}) {
   return data || [];
 }
 
-// -----------------------------------------------------------------------
 // Previous posts
-// -----------------------------------------------------------------------
 async function fetchPublishedPosts(propertyId) {
   const { data, error } = await supabase
     .from("fb_group_posts")
@@ -232,9 +222,7 @@ async function recordFailedPost({ propertyId, groupId, jobId, error: errMsg }) {
 }
 
 
-// -----------------------------------------------------------------------
 // Action log
-// -----------------------------------------------------------------------
 async function log({
   jobId,
   groupId = null,

@@ -1,4 +1,3 @@
-// src/utils/retry.js
 'use strict';
 const { sleep, randInt } = require('./human');
 

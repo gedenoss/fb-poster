@@ -1,4 +1,3 @@
-// src/modules/browser.js
 "use strict";
 const { chromium } = require("playwright");
 const config = require("../config");
@@ -23,14 +22,13 @@ async function launch({ pullFresh = true } = {}) {
       "--no-sandbox",
       "--disable-dev-shm-usage",
       "--disable-setuid-sandbox",
-
-      // Memory savers — aggressive
       "--single-process",
       "--no-zygote",
       "--disable-gpu",
       "--disable-accelerated-2d-canvas",
       "--disable-software-rasterizer",
-
+      "--disable-gpu-rasterization",
+      "--disable-2d-canvas-image-chromium",
       "--disable-extensions",
       "--disable-background-networking",
       "--disable-background-timer-throttling",
@@ -55,60 +53,34 @@ async function launch({ pullFresh = true } = {}) {
       "--no-pings",
       "--password-store=basic",
       "--use-mock-keychain",
-
-      "--memory-pressure-off",
-      "--max_old_space_size=300", // hard cap V8 at 300MB
-
-      // Disable Chrome's image rendering on the GPU
-      "--disable-gpu-rasterization",
-      "--disable-2d-canvas-image-chromium",
-
-      // Smaller window means less to render
       "--window-size=1024,768",
     ],
   });
 
-  const storageState = session.hasLocalSession()
-    ? session.localPath()
-    : undefined;
+  const storageState = session.hasLocalSession() ? session.localPath() : undefined;
 
   const ctx = await browser.newContext({
     storageState,
     locale: config.browser.locale,
     userAgent: config.browser.userAgent || undefined,
-    viewport: { width: 1024, height: 768 }, // smaller viewport (~30% less pixels)
+    viewport: { width: 1024, height: 768 },
     timezoneId: "Europe/Paris",
-    extraHTTPHeaders: {
-      "Accept-Language": `${config.browser.locale},en;q=0.7`,
-    },
-
-    // No service workers, no JS-heavy features
+    extraHTTPHeaders: { "Accept-Language": `${config.browser.locale},en;q=0.7` },
     serviceWorkers: "block",
   });
 
-  // ====================================================================
-  // AGGRESSIVE RESOURCE BLOCKING
-  // Block everything we don't strictly need. FB still works, just uglier.
-  // ====================================================================
   await ctx.route("**/*", (route) => {
     const req = route.request();
     const type = req.resourceType();
     const url = req.url();
 
-    // Block all media, fonts, images (heavy + we don't render them)
     if (type === "media" || type === "font" || type === "image") {
       return route.abort();
     }
-
-    // Block tracking, analytics, ads, video
     if (
-      /\b(analytics|tracking|telemetry|metrics|beacon|pixel|adservice|ads)\b/i.test(
-        url,
-      ) ||
+      /\b(analytics|tracking|telemetry|metrics|beacon|pixel|adservice|ads)\b/i.test(url) ||
       /\.(mp4|webm|ogg|m4a|m4v|mov)(\?|$)/i.test(url) ||
-      /facebook\.com\/(rsrc\.php|tr|tr\/|ajax\/bz|ajax\/bnzai|ajax\/log)/i.test(
-        url,
-      )
+      /facebook\.com\/(rsrc\.php|tr|tr\/|ajax\/bz|ajax\/bnzai|ajax\/log)/i.test(url)
     ) {
       return route.abort();
     }
@@ -139,19 +111,11 @@ async function checkSession(page) {
 
   const url = page.url();
   const title = await page.title().catch(() => "");
-
   logger.info({ url, title }, "checkSession: landed");
 
   if (/\/checkpoint/i.test(url)) return "checkpoint";
   if (/\/login/i.test(url)) return "login_required";
-
-  if (!/\/me\/?$/.test(url)) {
-    logger.info(
-      { finalUrl: url },
-      "checkSession: /me redirected to profile, logged in",
-    );
-    return "ok";
-  }
+  if (!/\/me\/?$/.test(url)) return "ok";
 
   const indicators = [
     '[aria-label*="Create a post" i]',
@@ -166,9 +130,7 @@ async function checkSession(page) {
   ];
   for (const sel of indicators) {
     try {
-      if (await page.locator(sel).first().isVisible({ timeout: 1500 })) {
-        return "ok";
-      }
+      if (await page.locator(sel).first().isVisible({ timeout: 1500 })) return "ok";
     } catch {
       /* keep trying */
     }

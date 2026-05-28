@@ -1,4 +1,3 @@
-// src/modules/relogin.js
 'use strict';
 const logger  = require('../utils/logger');
 const browser = require('./browser');
