@@ -20,7 +20,7 @@ apt-get install -y \
   libx11-6 libxcomposite1 libxdamage1 \
   libxext6 libxfixes3 libxrandr2 \
   libgbm1 libpango-1.0-0 libcairo2 \
-  libasound2
+  libasound2t64
 
 echo "[3/6] Node.js 20..."
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
