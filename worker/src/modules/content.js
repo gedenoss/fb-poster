@@ -46,14 +46,14 @@ function buildPostText(payload) {
     const specs = [surface, rooms].filter(Boolean).join(" · ");
     if (specs) lines.push(specs);
     if (price) lines.push(`À partir de ${price} / mois`);
-    if (city) lines.push(`📍 ${city}`);
-    if (available) lines.push(`\n🛏 ${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} dès maintenant`);
+    if (city) lines.push(city);
+    if (available) lines.push(`\n${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} dès maintenant`);
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   if (variant === 1) {
     const lines = [];
-    if (available) lines.push(`🏠 ${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} à ${city || "louer"} !`, "");
+    if (available) lines.push(`${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} à ${city || "louer"}`, "");
     lines.push(title, "");
     if (desc) lines.push(desc, "");
     const specs = [surface, price ? `dès ${price} / mois` : null].filter(Boolean).join(" | ");
