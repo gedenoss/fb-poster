@@ -26,8 +26,6 @@ async function runJob(job) {
   const payload = await db.fetchPropertyPayload(propertyId);
   const allGroups = await db.fetchActiveGroups({ city: payload.city, zone: payload.zone });
   const groups = allGroups.slice(0, config.loop.maxGroupsPerJob);
-  const previous = await db.fetchPublishedPosts(propertyId);
-
   if (groups.length === 0) {
     await db.log({ jobId, action: "no_groups", level: "warn" });
     return { status: "completed", posts: [] };
@@ -65,16 +63,6 @@ async function runJob(job) {
       return { needsLogin: true };
     }
     await db.log({ jobId, action: "session_ok" });
-
-    if (previous.length > 0) {
-      await db.log({
-        jobId,
-        action: "delete_skipped",
-        level: "info",
-        message: `skipping deletion of ${previous.length} previous post(s) — flow simplified`,
-        meta: { count: previous.length },
-      });
-    }
 
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];

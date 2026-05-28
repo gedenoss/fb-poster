@@ -1,7 +1,6 @@
 "use strict";
 const logger = require("../utils/logger");
 const human = require("../utils/human");
-const { retry } = require("../utils/retry");
 
 const TIMEOUT = 30_000;
 
@@ -12,32 +11,13 @@ class SkippedPendingError extends Error {
   }
 }
 
-const RE_PENDING_BEFORE = [
-  /en attente d.approbation de l.admin/i,
-];
+const RE_PENDING = /en attente d.approbation de l.admin/i;
+const RE_ATTACH_PHOTO = /(photo|video|image|ajouter.*photo|añadir.*foto|adjuntar)/i;
+const RE_PUBLISH = /^(post|publish|publier|publicar)$/i;
 
 async function hasPendingText(page) {
-  for (const re of RE_PENDING_BEFORE) {
-    try {
-      if (await page.getByText(re).first().isVisible({ timeout: 1200 }).catch(() => false)) {
-        return true;
-      }
-    } catch (_) {}
-  }
-  return false;
+  return page.getByText(RE_PENDING).first().isVisible({ timeout: 1200 }).catch(() => false);
 }
-
-const RE_CREATE_POST =
-  /(create.*post|write.*someth|publier|écrire|publica|escribir)/i;
-const RE_ATTACH_PHOTO =
-  /(photo|video|image|ajouter.*photo|añadir.*foto|adjuntar)/i;
-const RE_PUBLISH = /^(post|publish|publier|publicar)$/i;
-const RE_POST_MENU =
-  /(actions for this post|options de la publication|more|plus|más opciones)/i;
-const RE_DELETE =
-  /(move to (trash|recycle bin)|delete post|supprimer la publication|supprimer|delete|eliminar)/i;
-const RE_CONFIRM_DELETE =
-  /^(move|delete|supprimer|confirmer|eliminar|aceptar|confirmar)$/i;
 
 async function findByRoleNameRegex(
   scope,
@@ -215,59 +195,6 @@ async function submitTwoFactor(page, code) {
     : { ok: true };
 }
 
-async function deletePost(page, postUrl) {
-  try {
-    await page.goto(postUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 45_000,
-    });
-    await human.sleep(human.randInt(2500, 4500));
-    await dismissCookieBanner(page);
-
-    await retry(
-      async () => {
-        await clickByRoleNameRegex(page, "button", RE_POST_MENU, {
-          timeout: 12_000,
-        });
-      },
-      { tries: 3, baseMs: 1500 },
-    );
-
-    await human.sleep(human.randInt(700, 1500));
-
-    await retry(
-      async () => {
-        try {
-          await clickByRoleNameRegex(page, "menuitem", RE_DELETE, {
-            timeout: 8000,
-          });
-        } catch {
-          await clickByRoleNameRegex(page, "button", RE_DELETE, {
-            timeout: 8000,
-          });
-        }
-      },
-      { tries: 2, baseMs: 1000 },
-    );
-
-    await human.sleep(human.randInt(800, 1600));
-
-    await retry(
-      async () => {
-        await clickByRoleNameRegex(page, "button", RE_CONFIRM_DELETE, {
-          timeout: 10_000,
-        });
-      },
-      { tries: 2, baseMs: 1000 },
-    );
-
-    await human.sleep(human.randInt(5000, 10_000));
-    return { ok: true };
-  } catch (err) {
-    logger.warn({ postUrl, err: err.message }, "deletePost failed");
-    return { ok: false, error: err.message };
-  }
-}
 
 async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
@@ -551,7 +478,6 @@ async function captureMostRecentPostUrl(page, groupUrl) {
 }
 
 module.exports = {
-  deletePost,
   postToGroup,
   loginWithCredentials,
   submitTwoFactor,

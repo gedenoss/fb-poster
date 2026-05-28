@@ -1,4 +1,5 @@
 'use strict';
+const crypto  = require('crypto');
 const logger  = require('../utils/logger');
 const browser = require('./browser');
 const session = require('./session');
@@ -6,16 +7,11 @@ const db      = require('./db');
 const facebook = require('./facebook');
 const { notify } = require('../utils/notify');
 
-/**
- * In-memory store of pending 2FA flows. Keyed by a short token returned to
- * the frontend. Each entry holds the live Playwright handles waiting on the
- * 2FA input. Entries auto-expire after 10 minutes.
- */
 const pending = new Map();
 const PENDING_TTL_MS = 10 * 60 * 1000;
 
 function newToken() {
-  return Math.random().toString(36).slice(2, 12);
+  return crypto.randomBytes(16).toString('hex');
 }
 
 function gc() {
@@ -29,18 +25,7 @@ function gc() {
 }
 setInterval(gc, 60_000).unref();
 
-/**
- * Phase 1: receive email + password, attempt login.
- *
- * Returns one of:
- *   { ok: true }                                  → cookies saved, ready
- *   { ok: false, reason: 'bad_credentials' }
- *   { ok: false, reason: 'checkpoint' }           → manual unlock required
- *   { ok: false, reason: '2fa_required', pendingToken: '...' }
- *   { ok: false, reason: 'unknown', detail: '...' }
- */
 async function startLogin({ email, password }) {
-  // First, kill any old session so we don't accidentally piggy-back on it.
   await session.clear();
   await db.setSessionState('relogging_in');
 
@@ -59,13 +44,11 @@ async function startLogin({ email, password }) {
     }
 
     if (r.reason === '2fa_required') {
-      // Keep the browser open and stash it under a token so phase 2 can resume.
       const token = newToken();
       pending.set(token, { browser: br, context, page, createdAt: Date.now() });
       return { ok: false, reason: '2fa_required', pendingToken: token };
     }
 
-    // Any other failure — close browser, set state back to needs_login.
     await br.close();
     await db.setSessionState('needs_login', { lastError: r.reason || 'unknown', checked: true });
     return { ok: false, reason: r.reason || 'unknown' };
@@ -77,9 +60,6 @@ async function startLogin({ email, password }) {
   }
 }
 
-/**
- * Phase 2: continue a 2FA flow.
- */
 async function submitTwoFactor({ pendingToken, code }) {
   const entry = pending.get(pendingToken);
   if (!entry) return { ok: false, reason: 'expired_or_unknown' };

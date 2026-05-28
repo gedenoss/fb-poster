@@ -117,18 +117,6 @@ async function fetchPropertyPayload(propertyId) {
   const images = [];
   if (base.cover_image) images.push(base.cover_image);
 
-  // Best-effort: gather additional pictures from optional tables.
-  try {
-    const { data: vc } = await supabase
-      .from("visual_content")
-      .select("url")
-      .eq("property_id", propertyId)
-      .limit(10);
-    if (Array.isArray(vc)) for (const r of vc) if (r.url) images.push(r.url);
-  } catch (_) {
-    /* table not present */
-  }
-
   return {
     propertyId: base.property_id,
     title: base.title || "À louer",
