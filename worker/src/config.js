@@ -62,7 +62,7 @@ const config = {
   },
   testMode: bool('TEST_MODE', false),
   notifications: {
-    slackWebhookUrl: process.env.SLACK_WEBHOOK_URL || '',
+    slackWebhookUrl: process.env.DISCORD_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL || '',
   },
 };
 

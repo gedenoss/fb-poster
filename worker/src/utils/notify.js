@@ -4,35 +4,25 @@ const config = require('../config');
 const logger = require('./logger');
 
 /**
- * Best-effort Slack webhook ping. Never throws.
- * Pass `text` and optionally `link_text` + `link_url`.
+ * Best-effort Discord webhook ping. Never throws.
+ * Pass `text` and optionally `linkText` + `linkUrl`.
  */
 async function slack(text, { linkText, linkUrl } = {}) {
   const url = config.notifications.slackWebhookUrl;
   if (!url) return;
 
-  const blocks = [
-    { type: 'section', text: { type: 'mrkdwn', text } },
-  ];
-  if (linkUrl) {
-    blocks.push({
-      type: 'actions',
-      elements: [{
-        type: 'button',
-        text: { type: 'plain_text', text: linkText || 'Open' },
-        url: linkUrl,
-      }],
-    });
-  }
+  const content = linkUrl
+    ? `${text}\n\n[${linkText || 'Ouvrir'}](${linkUrl})`
+    : text;
 
   try {
     await fetch(url, {
       method:  'POST',
       headers: { 'content-type': 'application/json' },
-      body:    JSON.stringify({ text, blocks }),
+      body:    JSON.stringify({ content }),
     });
   } catch (e) {
-    logger.warn({ err: e.message }, 'slack notify failed');
+    logger.warn({ err: e.message }, 'discord notify failed');
   }
 }
 
