@@ -11,65 +11,57 @@ function formatPrice(value) {
   }).format(n);
 }
 
-function stripHtml(html) {
-  return String(html)
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"');
-}
-
-function roomLabel(n) {
-  if (!n || n <= 0) return null;
-  return `${n} chambre${n > 1 ? "s" : ""}`;
-}
-
 function buildPostText(payload) {
   const price = formatPrice(payload.priceFrom);
-  const desc = payload.description ? stripHtml(payload.description).trim() : "";
   const city = (payload.city || "").trim();
   const title = (payload.title || "").trim();
-  const surface = payload.surface ? `${payload.surface} m²` : null;
-  const rooms = roomLabel(payload.bedrooms);
+  const surface = payload.surface ? `${payload.surface}m²` : null;
+  const totalRooms = payload.bedrooms || null;
   const available = payload.availableRooms > 0 ? payload.availableRooms : null;
 
   const variant = Math.floor(Math.random() * 3);
 
   if (variant === 0) {
-    const lines = [title];
+    const lines = ["Bonjour !", ""];
+    if (available) {
+      const ch = available > 1 ? "chambres disponibles" : "chambre disponible";
+      lines.push(`Il reste ${available} ${ch} au sein de notre immeuble${city ? ` à ${city}` : ""}.`);
+    }
     lines.push("");
-    if (desc) lines.push(desc, "");
-    const specs = [surface, rooms].filter(Boolean).join(" · ");
+    const specs = [title, surface, totalRooms ? `${totalRooms} chambre${totalRooms > 1 ? "s" : ""} au total` : null].filter(Boolean).join(" — ");
     if (specs) lines.push(specs);
-    if (price) lines.push(`À partir de ${price} / mois`);
-    if (city) lines.push(city);
-    if (available) lines.push(`\n${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} dès maintenant`);
+    if (price) lines.push(`Loyer à partir de ${price} / mois.`);
+    lines.push("", "N'hésitez pas à nous contacter par message pour plus d'informations !");
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   if (variant === 1) {
-    const lines = [];
-    if (available) lines.push(`${available} chambre${available > 1 ? "s" : ""} disponible${available > 1 ? "s" : ""} à ${city || "louer"}`, "");
-    lines.push(title, "");
-    if (desc) lines.push(desc, "");
-    const specs = [surface, price ? `dès ${price} / mois` : null].filter(Boolean).join(" | ");
+    const lines = ["Bonjour à tous !", ""];
+    if (available && city) {
+      const ch = available > 1 ? "chambres à louer" : "chambre à louer";
+      lines.push(`Nous proposons ${available} ${ch} à ${city}.`);
+    }
+    lines.push("");
+    if (title) lines.push(title);
+    const specs = [surface, totalRooms ? `${totalRooms} chambre${totalRooms > 1 ? "s" : ""} au total` : null].filter(Boolean).join(", ");
     if (specs) lines.push(specs);
+    if (price) lines.push(`À partir de ${price} / mois.`);
+    lines.push("", "Contactez-nous en message privé pour organiser une visite !");
     return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
 
   // variant 2
   const lines = [];
-  const header = [title, city].filter(Boolean).join(" — ");
-  lines.push(header, "");
-  if (desc) lines.push(desc, "");
-  const specs = [surface, rooms, available ? `${available} disponible${available > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ");
+  if (available) {
+    const ch = available > 1 ? "chambres disponibles" : "chambre disponible";
+    lines.push(`${available} ${ch}${city ? ` à ${city}` : ""} !`, "");
+  }
+  if (title) lines.push(title);
+  const specs = [surface, totalRooms ? `${totalRooms} chambre${totalRooms > 1 ? "s" : ""}` : null].filter(Boolean).join(" — ");
   if (specs) lines.push(specs);
-  if (price) lines.push(`À partir de ${price} / mois`);
+  if (price) lines.push(`Loyer : à partir de ${price} / mois.`);
+  lines.push("", "Pour plus d'infos, envoyez-nous un message !");
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-module.exports = { buildPostText, formatPrice };
+module.exports = { buildPostText };

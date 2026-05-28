@@ -13,12 +13,7 @@ class SkippedPendingError extends Error {
 }
 
 const RE_PENDING_BEFORE = [
-  /vous avez une publication en attente/i,
-  /you have a pending post/i,
-  /tienes una publicación pendiente/i,
-  /votre publication est en attente/i,
-  /your post is awaiting/i,
-  /your post is pending/i,
+  /en attente d.approbation de l.admin/i,
 ];
 
 async function hasPendingText(page) {
