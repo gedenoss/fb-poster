@@ -31,6 +31,16 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function startOfCurrentWeek(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0=dimanche, 1=lundi...
+  const diff = day === 0 ? -6 : 1 - day; // ramène au lundi
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday.toISOString();
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
@@ -73,7 +83,29 @@ async function handleEnqueue(req: Request): Promise<Response> {
   if (propErr) return json({ error: "db_error", detail: propErr.message }, 500);
   if (!prop) return json({ error: "property_not_found" }, 404);
 
-  // 2. De-dupe: if there's already an in-flight job for this property, return it.
+  // 2. Limite hebdomadaire : 1 job par propriété par semaine calendaire.
+  const weekStart = startOfCurrentWeek();
+  const { data: weeklyJob } = await supabase
+    .from("fb_posting_jobs")
+    .select("id, created_at")
+    .eq("property_id", propertyId)
+    .in("status", ["queued", "running", "completed", "partial"])
+    .gte("created_at", weekStart)
+    .limit(1)
+    .maybeSingle();
+  if (weeklyJob) {
+    const nextMonday = new Date();
+    nextMonday.setDate(nextMonday.getDate() + (8 - (nextMonday.getDay() || 7)));
+    nextMonday.setHours(0, 0, 0, 0);
+    return json({
+      error: "weekly_limit_reached",
+      message: `Ce bien a déjà été publié cette semaine. Prochain envoi possible le ${nextMonday.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}.`,
+      job_id: weeklyJob.id,
+      next_allowed_at: nextMonday.toISOString(),
+    }, 429);
+  }
+
+  // 3. De-dupe: if there's already an in-flight job for this property, return it.
   const { data: existing } = await supabase
     .from("fb_posting_jobs")
     .select("id, status")
@@ -92,7 +124,7 @@ async function handleEnqueue(req: Request): Promise<Response> {
     });
   }
 
-  // 3. Enqueue.
+  // 4. Enqueue.
   const { data: job, error: insErr } = await supabase
     .from("fb_posting_jobs")
     .insert({

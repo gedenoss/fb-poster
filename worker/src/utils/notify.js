@@ -7,8 +7,8 @@ const logger = require('./logger');
  * Best-effort Discord webhook ping. Never throws.
  * Pass `text` and optionally `linkText` + `linkUrl`.
  */
-async function slack(text, { linkText, linkUrl } = {}) {
-  const url = config.notifications.slackWebhookUrl;
+async function notify(text, { linkText, linkUrl } = {}) {
+  const url = config.notifications.discordWebhookUrl;
   if (!url) return;
 
   const content = linkUrl
@@ -26,4 +26,4 @@ async function slack(text, { linkText, linkUrl } = {}) {
   }
 }
 
-module.exports = { slack };
+module.exports = { notify };

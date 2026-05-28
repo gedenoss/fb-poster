@@ -10,7 +10,7 @@ const content = require("./content");
 const facebook = require("./facebook");
 const { SkippedPendingError } = facebook;
 const human = require("../utils/human");
-const { slack } = require("../utils/notify");
+const { notify } = require("../utils/notify");
 
 /**
  * Run a single posting job end-to-end.
@@ -32,7 +32,7 @@ async function runJob(job) {
   });
 
   const payload = await db.fetchPropertyPayload(propertyId);
-  const allGroups = await db.fetchActiveGroups({ city: payload.city });
+  const allGroups = await db.fetchActiveGroups({ city: payload.city, zone: payload.zone });
   const groups = allGroups.slice(0, config.loop.maxGroupsPerJob);
   const previous = await db.fetchPublishedPosts(propertyId);
 
@@ -67,7 +67,7 @@ async function runJob(job) {
         level: "warn",
         meta: { state },
       });
-      await slack(
+      await notify(
         `:warning: *Session Facebook expirée* (état: ${state}). Le job pour la propriété \`${propertyId}\` est en attente.`,
         { linkText: "Se reconnecter", linkUrl: reloginLink() },
       );
@@ -231,6 +231,28 @@ async function runJob(job) {
       global.gc();
       logger.debug("forced gc after job");
     } catch (_) {}
+  }
+
+  // ---- Notification Discord ----
+  const durationMin = Math.round((Date.now() - t0) / 60000);
+  if (result.status === "completed") {
+    const lines = result.posts
+      .filter((p) => p.status === "success")
+      .map((p) => `✅ ${p.group_name}${p.post_url ? ` — ${p.post_url}` : ""}`)
+      .join("\n");
+    await notify(`✅ Job terminé (${durationMin} min)\n${lines}`).catch(() => {});
+  } else if (result.status === "partial") {
+    const lines = result.posts
+      .map((p) => p.status === "success"
+        ? `✅ ${p.group_name}`
+        : `❌ ${p.group_name} — ${p.error || "échec"}`)
+      .join("\n");
+    await notify(`⚠️ Job partiel (${durationMin} min)\n${lines}`).catch(() => {});
+  } else if (result.status === "failed") {
+    const lines = result.posts
+      .map((p) => `❌ ${p.group_name} — ${p.error || "échec"}`)
+      .join("\n");
+    await notify(`🔴 Job échoué (${durationMin} min)\n${lines}`).catch(() => {});
   }
 
   return result;

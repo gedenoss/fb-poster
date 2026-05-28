@@ -5,7 +5,7 @@ const browser = require('./browser');
 const session = require('./session');
 const db      = require('./db');
 const facebook = require('./facebook');
-const { slack } = require('../utils/notify');
+const { notify } = require('../utils/notify');
 
 /**
  * In-memory store of pending 2FA flows. Keyed by a short token returned to
@@ -55,7 +55,7 @@ async function startLogin({ email, password }) {
       await db.setSessionState('ok', { checked: true });
       await br.close();
       await requeueAllNeedsLogin();
-      await slack(':white_check_mark: Session Facebook restaurée — les jobs en attente repartent.');
+      await notify(':white_check_mark: Session Facebook restaurée — les jobs en attente repartent.');
       return { ok: true };
     }
 
@@ -93,7 +93,7 @@ async function submitTwoFactor({ pendingToken, code }) {
       await db.setSessionState('ok', { checked: true });
       await entry.browser.close();
       await requeueAllNeedsLogin();
-      await slack(':white_check_mark: Session Facebook restaurée (2FA OK).');
+      await notify(':white_check_mark: Session Facebook restaurée (2FA OK).');
       return { ok: true };
     }
     await entry.browser.close();

@@ -140,6 +140,7 @@ async function fetchPropertyPayload(propertyId) {
     propertyId: base.property_id,
     title: base.title || "À louer",
     city: base.city || "",
+    zone: base.zone || base.city || "",
     address: base.address || "",
     surface: base.surface_m2,
     bedrooms: base.bedrooms,
@@ -152,7 +153,7 @@ async function fetchPropertyPayload(propertyId) {
 // -----------------------------------------------------------------------
 // Groups (with TEST_MODE filter)
 // -----------------------------------------------------------------------
-async function fetchActiveGroups({ city } = {}) {
+async function fetchActiveGroups({ city, zone } = {}) {
   let q = supabase
     .from("fb_groups")
     .select("id, name, url, city, is_test")
@@ -160,7 +161,18 @@ async function fetchActiveGroups({ city } = {}) {
 
   if (config.testMode) q = q.eq("is_test", true);
 
-  if (city) q = q.or(`city.is.null,city.eq.${city}`);
+  // Build unique city list: exact city + zone (if different)
+  const cities = [...new Set([city, zone].filter(Boolean))];
+
+  if (cities.length > 0) {
+    // Groupes globaux (city NULL) + ville exacte + zone parente
+    const cityFilters = cities.map((c) => `city.eq.${c}`).join(",");
+    q = q.or(`city.is.null,${cityFilters}`);
+  } else {
+    // Propriété sans ville → uniquement les groupes globaux
+    q = q.is("city", null);
+  }
+
   const { data, error } = await q;
   if (error) throw error;
   return data || [];
