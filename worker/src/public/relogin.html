@@ -1,153 +1,290 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="robots" content="noindex,nofollow" />
-  <title>Reconnexion Facebook</title>
-  <style>
-    :root { color-scheme: light dark; --bg:#f5f6f7; --card:#fff; --fg:#1c1e21; --muted:#65676b; --pri:#1877f2; --err:#e41e3f; --ok:#1ea35c; }
-    @media (prefers-color-scheme: dark) { :root { --bg:#18191a; --card:#242526; --fg:#e4e6eb; --muted:#b0b3b8; } }
-    * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; display:grid; place-items:center; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); padding:20px; }
-    .card { width:100%; max-width:420px; background:var(--card); border-radius:14px; padding:28px; box-shadow:0 4px 24px rgba(0,0,0,.08); }
-    h1 { font-size:22px; margin:0 0 6px; }
-    p.lead { margin:0 0 24px; color:var(--muted); font-size:14px; line-height:1.45; }
-    label { display:block; font-size:13px; font-weight:600; margin-bottom:6px; color:var(--muted); }
-    input[type="text"], input[type="email"], input[type="password"] {
-      width:100%; padding:12px 14px; border-radius:8px; border:1px solid #ccd0d5;
-      background:var(--card); color:var(--fg); font-size:15px; margin-bottom:16px;
-      transition:border-color .15s;
-    }
-    input:focus { outline:none; border-color:var(--pri); }
-    button { width:100%; padding:12px 14px; border:none; border-radius:8px; background:var(--pri); color:#fff; font-size:15px; font-weight:600; cursor:pointer; }
-    button:disabled { opacity:.55; cursor:not-allowed; }
-    .msg { padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:16px; line-height:1.4; }
-    .msg.err { background:rgba(228,30,63,.1); color:var(--err); }
-    .msg.ok  { background:rgba(30,163,92,.1);  color:var(--ok); }
-    .hidden { display:none; }
-    .footnote { margin-top:18px; color:var(--muted); font-size:12px; line-height:1.5; }
-    .logo { font-weight:800; font-size:28px; color:var(--pri); letter-spacing:-1px; margin-bottom:8px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">f</div>
-    <h1>Reconnexion au compte Facebook</h1>
-    <p class="lead">
-      La session du bot a expiré. Connectez-vous une seule fois avec les
-      identifiants du compte Facebook utilisé par le robot. Vos identifiants
-      ne sont jamais sauvegardés.
-    </p>
-
-    <div id="msg" class="msg hidden"></div>
-
-    <!-- Phase 1: email + password -->
-    <form id="form1">
-      <label for="email">Email ou téléphone</label>
-      <input id="email" type="text" autocomplete="username" required />
-
-      <label for="password">Mot de passe</label>
-      <input id="password" type="password" autocomplete="current-password" required />
-
-      <button id="btn1" type="submit">Se connecter</button>
-    </form>
-
-    <!-- Phase 2: 2FA -->
-    <form id="form2" class="hidden">
-      <label for="code">Code de vérification</label>
-      <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required />
-      <button id="btn2" type="submit">Valider le code</button>
-    </form>
-
-    <p class="footnote">
-      Cette page parle directement à votre robot Render. Aucun mot de passe
-      n'est stocké en base. Si le bouton ne répond pas, attendez 30&nbsp;s
-      (le serveur peut être en train de se réveiller).
-    </p>
-  </div>
-
-<script>
-  const qs   = new URLSearchParams(location.search);
-  const token = qs.get('token') || '';
-  const $    = (id) => document.getElementById(id);
-  const msg  = $('msg');
-
-  function show(kind, text) {
-    msg.className = 'msg ' + kind;
-    msg.textContent = text;
-    msg.classList.remove('hidden');
-  }
-  function hide() { msg.classList.add('hidden'); }
-
-  let pendingToken = null;
-
-  $('form1').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    hide();
-    $('btn1').disabled = true;
-    $('btn1').textContent = 'Connexion…';
-    try {
-      const r = await fetch('/api/relogin/start?token=' + encodeURIComponent(token), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: $('email').value, password: $('password').value }),
-      });
-      const data = await r.json();
-      if (data.ok) {
-        show('ok', '✅ Connecté ! Les publications reprennent automatiquement.');
-        $('form1').classList.add('hidden');
-      } else if (data.reason === '2fa_required') {
-        pendingToken = data.pendingToken;
-        $('form1').classList.add('hidden');
-        $('form2').classList.remove('hidden');
-        show('ok', 'Un code de vérification a été envoyé sur votre app Authenticator ou par SMS.');
-      } else if (data.reason === 'bad_credentials') {
-        show('err', '❌ Email ou mot de passe incorrect.');
-      } else if (data.reason === 'checkpoint') {
-        show('err', "⚠️ Facebook demande une vérification manuelle. Connectez-vous une fois sur facebook.com depuis votre navigateur habituel, validez ce qu'il demande, puis réessayez ici.");
-      } else if (data.reason === 'unauthorized') {
-        show('err', '🔒 Token invalide. Demande le bon lien à l\'admin.');
-      } else {
-        show('err', '⚠️ Échec : ' + (data.reason || 'erreur inconnue'));
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>reconnexion facebook</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f6f7;
+        --card: #fff;
+        --fg: #1c1e21;
+        --muted: #65676b;
+        --pri: #1877f2;
+        --err: #e41e3f;
+        --ok: #1ea35c;
       }
-    } catch (err) {
-      show('err', '⚠️ Erreur réseau : ' + err.message);
-    } finally {
-      $('btn1').disabled = false;
-      $('btn1').textContent = 'Se connecter';
-    }
-  });
-
-  $('form2').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    hide();
-    $('btn2').disabled = true;
-    $('btn2').textContent = 'Validation…';
-    try {
-      const r = await fetch('/api/relogin/2fa?token=' + encodeURIComponent(token), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pendingToken, code: $('code').value }),
-      });
-      const data = await r.json();
-      if (data.ok) {
-        show('ok', '✅ Connecté ! Les publications reprennent automatiquement.');
-        $('form2').classList.add('hidden');
-      } else if (data.reason === 'expired_or_unknown') {
-        show('err', '⏱ Session de reconnexion expirée. Recommencez avec email/mot de passe.');
-        $('form2').classList.add('hidden');
-        $('form1').classList.remove('hidden');
-      } else {
-        show('err', '❌ Code refusé : ' + (data.reason || 'erreur'));
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #18191a;
+          --card: #242526;
+          --fg: #e4e6eb;
+          --muted: #b0b3b8;
+        }
       }
-    } catch (err) {
-      show('err', '⚠️ Erreur réseau : ' + err.message);
-    } finally {
-      $('btn2').disabled = false;
-      $('btn2').textContent = 'Valider le code';
-    }
-  });
-</script>
-</body>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family:
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 20px;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--card);
+        border-radius: 14px;
+        padding: 28px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+      }
+      p.lead {
+        margin: 0 0 24px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: var(--muted);
+      }
+      input[type="text"],
+      input[type="email"],
+      input[type="password"] {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 8px;
+        border: 1px solid #ccd0d5;
+        background: var(--card);
+        color: var(--fg);
+        font-size: 15px;
+        margin-bottom: 16px;
+        transition: border-color 0.15s;
+      }
+      input:focus {
+        outline: none;
+        border-color: var(--pri);
+      }
+      button {
+        width: 100%;
+        padding: 12px 14px;
+        border: none;
+        border-radius: 8px;
+        background: var(--pri);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .msg {
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin-bottom: 16px;
+        line-height: 1.4;
+      }
+      .msg.err {
+        background: rgba(228, 30, 63, 0.1);
+        color: var(--err);
+      }
+      .msg.ok {
+        background: rgba(30, 163, 92, 0.1);
+        color: var(--ok);
+      }
+      .hidden {
+        display: none;
+      }
+      .footnote {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .logo {
+        font-weight: 800;
+        font-size: 28px;
+        color: var(--pri);
+        letter-spacing: -1px;
+        margin-bottom: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="logo">f</div>
+      <h1>reconnexion facebook</h1>
+      <p class="lead">
+        la session du bot a expiré. connectez-vous avec les identifiants du bot
+        facebook. les identifiants ne sont jamais sauvegardés.
+      </p>
+
+      <div id="msg" class="msg hidden"></div>
+
+      <!-- Phase 1: email + password -->
+      <form id="form1">
+        <label for="email">email ou telephone</label>
+        <input id="email" type="text" autocomplete="username" required />
+
+        <label for="password">mot de passe</label>
+        <input
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <button id="btn1" type="submit">se connecter</button>
+      </form>
+
+      <!-- Phase 2: 2FA -->
+      <form id="form2" class="hidden">
+        <label for="code">Code de vérification</label>
+        <input
+          id="code"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="8"
+          required
+        />
+        <button id="btn2" type="submit">Valider le code</button>
+      </form>
+
+      <p class="footnote">
+        aucun mot de passe n'est stocke en base. si le bouton ne repond pas,
+        attendez 30&nbsp;s. ne pas spam svp
+      </p>
+    </div>
+
+    <script>
+      const qs = new URLSearchParams(location.search);
+      const token = qs.get("token") || "";
+      const $ = (id) => document.getElementById(id);
+      const msg = $("msg");
+
+      function show(kind, text) {
+        msg.className = "msg " + kind;
+        msg.textContent = text;
+        msg.classList.remove("hidden");
+      }
+      function hide() {
+        msg.classList.add("hidden");
+      }
+
+      let pendingToken = null;
+
+      $("form1").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hide();
+        $("btn1").disabled = true;
+        $("btn1").textContent = "connexion…";
+        try {
+          const r = await fetch(
+            "/api/relogin/start?token=" + encodeURIComponent(token),
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                email: $("email").value,
+                password: $("password").value,
+              }),
+            },
+          );
+          const data = await r.json();
+          if (data.ok) {
+            show(
+              "ok",
+              " connecté , les publications reprennent automatiquement.",
+            );
+            $("form1").classList.add("hidden");
+          } else if (data.reason === "2fa_required") {
+            pendingToken = data.pendingToken;
+            $("form1").classList.add("hidden");
+            $("form2").classList.remove("hidden");
+            show(
+              "ok",
+              "un code de vérification a été envoyé sur votre app authenticator ou par SMS.",
+            );
+          } else if (data.reason === "bad_credentials") {
+            show("err", " email ou mot de passe incorrect.");
+          } else if (data.reason === "checkpoint") {
+            show(
+              "err",
+              " facebook demande une vérification manuelle. connectez-vous une fois sur facebook.com depuis votre navigateur habituel, validez ce qu'il demande, puis réessayez ici.",
+            );
+          } else if (data.reason === "unauthorized") {
+            show("err", " token invalide. demande le bon lien à l'admin.");
+          } else {
+            show("err", "echec : " + (data.reason || "erreur inconnue"));
+          }
+        } catch (err) {
+          show("err", " erreur réseau : " + err.message);
+        } finally {
+          $("btn1").disabled = false;
+          $("btn1").textContent = "se connecter";
+        }
+      });
+
+      $("form2").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hide();
+        $("btn2").disabled = true;
+        $("btn2").textContent = "validation…";
+        try {
+          const r = await fetch(
+            "/api/relogin/2fa?token=" + encodeURIComponent(token),
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ pendingToken, code: $("code").value }),
+            },
+          );
+          const data = await r.json();
+          if (data.ok) {
+            show(
+              "ok",
+              "connecte , les publications reprennent automatiquement.",
+            );
+            $("form2").classList.add("hidden");
+          } else if (data.reason === "expired_or_unknown") {
+            show(
+              "err",
+              " session de reconnexion expirée. recommencez avec email/mot de passe.",
+            );
+            $("form2").classList.add("hidden");
+            $("form1").classList.remove("hidden");
+          } else {
+            show("err", "code refusé : " + (data.reason || "erreur"));
+          }
+        } catch (err) {
+          show("err", "erreur réseau : " + err.message);
+        } finally {
+          $("btn2").disabled = false;
+          $("btn2").textContent = "valider le code";
+        }
+      });
+    </script>
+  </body>
 </html>

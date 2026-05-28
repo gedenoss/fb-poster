@@ -46,7 +46,10 @@ const config = {
     executablePath:  process.env.CHROMIUM_EXECUTABLE_PATH || '',
   },
   loop: {
-    pollIntervalMs: int('POLL_INTERVAL_MS', 10000),
+    pollIntervalMs:    int('POLL_INTERVAL_MS', 10000),
+    groupDelayMs:      int('GROUP_DELAY_MS', 480_000),   // délai entre chaque groupe (défaut 8 min)
+    maxGroupsPerJob:   int('MAX_GROUPS_PER_JOB', 10),    // max groupes par job
+    browserRecycleEvery: int('BROWSER_RECYCLE_EVERY', 5), // recycle RAM tous les N groupes
   },
   human: {
     typingMinMs:        int('TYPING_MIN_MS', 20),

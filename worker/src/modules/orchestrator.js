@@ -32,7 +32,8 @@ async function runJob(job) {
   });
 
   const payload = await db.fetchPropertyPayload(propertyId);
-  const groups = await db.fetchActiveGroups({ city: payload.city });
+  const allGroups = await db.fetchActiveGroups({ city: payload.city });
+  const groups = allGroups.slice(0, config.loop.maxGroupsPerJob);
   const previous = await db.fetchPublishedPosts(propertyId);
 
   if (groups.length === 0) {
@@ -48,7 +49,7 @@ async function runJob(job) {
     meta: { groups: groups.length, images: localImgs.length, hasText: !!text },
   });
 
-  const { browser: br, context, page } = await browser.launch();
+  let { browser: br, context, page } = await browser.launch();
   const result = { status: "completed", posts: [] };
 
   try {
@@ -88,7 +89,20 @@ async function runJob(job) {
     }
 
     // ---- Post in each group ----
-    for (const group of groups) {
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+
+      // Recycle le browser tous les N groupes pour libérer la RAM
+      if (i > 0 && i % config.loop.browserRecycleEvery === 0) {
+        logger.info({ i }, "recyclage browser — libération RAM");
+        try { await page.close(); } catch (_) {}
+        try { await context.close(); } catch (_) {}
+        try { await br.close(); } catch (_) {}
+        if (global.gc) try { global.gc(); } catch (_) {}
+        await human.sleep(3000);
+        ({ browser: br, context, page } = await browser.launch({ pullFresh: false }));
+      }
+
       await db.log({
         jobId,
         groupId: group.id,
@@ -161,6 +175,12 @@ async function runJob(job) {
       await human.idleMouseMove(page).catch(() => {});
       await human.microScroll(page).catch(() => {});
       await human.randomDelay();
+
+      // Délai long entre groupes pour lisser sur la durée et éviter le ban
+      if (i < groups.length - 1) {
+        logger.info({ delayMs: config.loop.groupDelayMs, next: groups[i + 1].name }, "pause entre groupes");
+        await human.sleep(config.loop.groupDelayMs);
+      }
     }
 
     // ---- Persist session ----
