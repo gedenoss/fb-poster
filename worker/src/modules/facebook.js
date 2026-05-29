@@ -448,30 +448,29 @@ async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
     'div[aria-label*="En cours d" i]',
     'div[aria-label*="Subiendo" i]',
   ];
+  const previewSelector = [
+    'img[src*="scontent"]',
+    'img[src*="fbcdn"]',
+    'div[aria-label*="Remove" i]',
+    'div[aria-label*="Supprimer" i]',
+    'div[aria-label*="Retirer" i]',
+    'div[data-visualcompletion="media-vc-image"]',
+  ].join(", ");
+
+  await human.sleep(2000);
+
+  let noProgressStreak = 0;
   while (Date.now() - start < timeoutMs) {
     let stillUploading = false;
     for (const sel of progressSelectors) {
-      const cnt = await dialog
-        .locator(sel)
-        .count()
-        .catch(() => 0);
-      if (cnt > 0) {
-        stillUploading = true;
-        break;
-      }
+      const cnt = await dialog.locator(sel).count().catch(() => 0);
+      if (cnt > 0) { stillUploading = true; noProgressStreak = 0; break; }
     }
     if (!stillUploading) {
-      const previews = await dialog
-        .locator('img[src*="scontent"], div[aria-label*="Remove"]')
-        .count()
-        .catch(() => 0);
+      noProgressStreak++;
+      const previews = await dialog.locator(previewSelector).count().catch(() => 0);
       if (previews > 0) return;
-      await human.sleep(800);
-      const previews2 = await dialog
-        .locator('img[src*="scontent"], div[aria-label*="Remove"]')
-        .count()
-        .catch(() => 0);
-      if (previews2 > 0) return;
+      if (noProgressStreak >= 5) return;
     }
     await human.sleep(800);
   }
