@@ -39,6 +39,7 @@ async function runJob(job) {
 
   const text = content.buildPostText(payload);
   const localImgs = await images.downloadMany(payload.images || []);
+  logger.info({ images: payload.images, localImgs }, "images ready");
   await db.log({
     jobId,
     action: "data_ready",

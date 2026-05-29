@@ -403,6 +403,7 @@ async function postToGroup(page, group, text, imagePaths) {
       }
     }
     if (!target) throw new Error("no file input found in composer");
+    logger.info({ count: imagePaths.length, paths: imagePaths }, "setInputFiles");
     await target.setInputFiles(imagePaths);
     await waitForUploadsToFinish(scope === page ? page.locator("body") : scope);
   }
@@ -459,18 +460,15 @@ async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
 
   await human.sleep(2000);
 
-  let noProgressStreak = 0;
   while (Date.now() - start < timeoutMs) {
     let stillUploading = false;
     for (const sel of progressSelectors) {
       const cnt = await dialog.locator(sel).count().catch(() => 0);
-      if (cnt > 0) { stillUploading = true; noProgressStreak = 0; break; }
+      if (cnt > 0) { stillUploading = true; break; }
     }
     if (!stillUploading) {
-      noProgressStreak++;
       const previews = await dialog.locator(previewSelector).count().catch(() => 0);
       if (previews > 0) return;
-      if (noProgressStreak >= 5) return;
     }
     await human.sleep(800);
   }
