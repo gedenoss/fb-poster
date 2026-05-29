@@ -450,10 +450,10 @@ async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
     'div[aria-label*="Subiendo" i]',
   ];
   const previewSelector = [
-    'img[src*="scontent"]',
-    'img[src*="fbcdn"]',
     'div[aria-label*="Remove" i]',
+    'button[aria-label*="Remove" i]',
     'div[aria-label*="Supprimer" i]',
+    'button[aria-label*="Supprimer" i]',
     'div[aria-label*="Retirer" i]',
     'div[data-visualcompletion="media-vc-image"]',
   ].join(", ");
