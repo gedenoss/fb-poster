@@ -86,12 +86,11 @@ async function handleEnqueue(req: Request): Promise<Response> {
     return json({ error: "no_available_rooms" }, 422);
   }
 
-  // 2. Limite hebdomadaire : 1 job par propriété par semaine calendaire.
+  // 2. Limite hebdomadaire : 1 utilisation du bot par semaine calendaire (toutes propriétés).
   const weekStart = startOfCurrentWeek();
   const { data: weeklyJob } = await supabase
     .from("fb_posting_jobs")
     .select("id, created_at")
-    .eq("property_id", propertyId)
     .in("status", ["queued", "running", "completed", "partial"])
     .gte("created_at", weekStart)
     .limit(1)
@@ -102,7 +101,7 @@ async function handleEnqueue(req: Request): Promise<Response> {
     nextMonday.setHours(0, 0, 0, 0);
     return json({
       error: "weekly_limit_reached",
-      message: `Ce bien a déjà été publié cette semaine. Prochain envoi possible le ${nextMonday.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}.`,
+      message: `Le bot a déjà été utilisé cette semaine. Prochain envoi possible le ${nextMonday.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}.`,
       job_id: weeklyJob.id,
       next_allowed_at: nextMonday.toISOString(),
     }, 429);

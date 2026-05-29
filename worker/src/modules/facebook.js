@@ -11,12 +11,24 @@ class SkippedPendingError extends Error {
   }
 }
 
+class RateLimitedError extends Error {
+  constructor() {
+    super('rate_limited_by_facebook');
+    this.name = 'RateLimitedError';
+  }
+}
+
 const RE_PENDING = /en attente d.approbation de l.admin/i;
+const RE_RATE_LIMIT = /nous limitons le nombre de fois|you.re temporarily blocked|you can.t use this feature right now|limite.*laps de temps/i;
 const RE_ATTACH_PHOTO = /(photo|video|image|ajouter.*photo|añadir.*foto|adjuntar)/i;
 const RE_PUBLISH = /^(post|publish|publier|publicar)$/i;
 
 async function hasPendingText(page) {
   return page.getByText(RE_PENDING).first().isVisible({ timeout: 1200 }).catch(() => false);
+}
+
+async function hasRateLimitText(page) {
+  return page.getByText(RE_RATE_LIMIT).first().isVisible({ timeout: 1200 }).catch(() => false);
 }
 
 async function findByRoleNameRegex(
@@ -200,6 +212,11 @@ async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
+
+  if (await hasRateLimitText(page)) {
+    logger.warn({ groupUrl: group.url }, "rate limited by facebook");
+    throw new RateLimitedError();
+  }
 
   if (await hasPendingText(page)) {
     logger.info({ groupUrl: group.url }, "pending post detected, skipping group");
@@ -401,6 +418,18 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(400, 900));
   await publishBtn.click({ delay: human.randInt(60, 180) });
 
+  // Certains groupes affichent une confirmation "soumis à modération — continuer ?"
+  await human.sleep(1500);
+  const RE_CONFIRM = /^(continuer|continue|ok|confirmer|confirm|soumettre|submit)$/i;
+  try {
+    const confirmBtn = page.getByRole("button", { name: RE_CONFIRM }).first();
+    if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await confirmBtn.click({ delay: human.randInt(40, 100) });
+      logger.info("moderation confirmation dismissed");
+      await human.sleep(1500);
+    }
+  } catch (_) {}
+
   if (scope !== page) {
     await scope.waitFor({ state: "detached", timeout: 60_000 }).catch(() => {});
   } else {
@@ -463,15 +492,17 @@ async function findPublishButton(dialog) {
 async function captureMostRecentPostUrl(page, groupUrl) {
   try {
     await page.evaluate(() => window.scrollTo(0, 0));
-    await human.sleep(human.randInt(1500, 3000));
+    await human.sleep(human.randInt(2000, 4000));
+    await page.evaluate(() => window.scrollBy(0, 300));
+    await human.sleep(1000);
 
     const article = page.getByRole("article").first();
-    await article.waitFor({ state: "visible", timeout: 10_000 });
+    await article.waitFor({ state: "visible", timeout: 20_000 });
 
     const link = article
-      .locator('a[href*="/posts/"], a[href*="/permalink/"]')
+      .locator('a[href*="/posts/"], a[href*="/permalink/"], a[href*="/groups/"][href*="?"]')
       .first();
-    const href = await link.getAttribute("href", { timeout: 6000 });
+    const href = await link.getAttribute("href", { timeout: 10_000 });
     if (href)
       return new URL(href, "https://www.facebook.com").toString().split("?")[0];
   } catch (e) {
@@ -485,4 +516,5 @@ module.exports = {
   loginWithCredentials,
   submitTwoFactor,
   SkippedPendingError,
+  RateLimitedError,
 };

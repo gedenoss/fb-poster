@@ -7,7 +7,7 @@ const session = require("./session");
 const images = require("./images");
 const content = require("./content");
 const facebook = require("./facebook");
-const { SkippedPendingError } = facebook;
+const { SkippedPendingError, RateLimitedError } = facebook;
 const human = require("../utils/human");
 const { notify } = require("../utils/notify");
 
@@ -116,7 +116,13 @@ async function runJob(job) {
           message: postUrl,
         });
       } catch (err) {
-        if (err instanceof SkippedPendingError) {
+        if (err instanceof RateLimitedError) {
+          logger.warn({ group: group.name }, "rate limited — stopping job");
+          await db.log({ jobId, groupId: group.id, action: "rate_limited", level: "warn" });
+          await notify(`⚠️ Facebook a limité le compte — job arrêté après ${result.posts.filter(p => p.status === "success").length} groupe(s).`).catch(() => {});
+          result.posts.push({ group_id: group.id, group_name: group.name, status: "failed", error: "rate_limited" });
+          break;
+        } else if (err instanceof SkippedPendingError) {
           logger.info({ group: group.name }, "post annulé — publication déjà en attente");
           result.posts.push({
             group_id: group.id,
