@@ -24,6 +24,12 @@ async function runJob(job) {
   });
 
   const payload = await db.fetchPropertyPayload(propertyId);
+
+  if (!(payload.availableRooms > 0)) {
+    await db.log({ jobId, action: "no_available_rooms", level: "warn" });
+    return { status: "failed", error: "no_available_rooms", posts: [] };
+  }
+
   const allGroups = await db.fetchActiveGroups({ city: payload.city, zone: payload.zone });
   const groups = allGroups.slice(0, config.loop.maxGroupsPerJob);
   if (groups.length === 0) {

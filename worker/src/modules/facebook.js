@@ -339,9 +339,12 @@ async function postToGroup(page, group, text, imagePaths) {
       textbox = dialog.getByRole("textbox").first();
       logger.info("composer opened in dialog mode");
     } else {
-      scope = page;
-      textbox = page.getByRole("textbox").first();
-      logger.info("composer opened in inline mode");
+      const inlineForm = page.locator('[role="main"] form, [role="main"] [role="article"]').first();
+      const inlineTextbox = inlineForm.getByRole("textbox").first();
+      const hasInline = await inlineTextbox.isVisible({ timeout: 2000 }).catch(() => false);
+      scope = hasInline ? inlineForm : page;
+      textbox = hasInline ? inlineTextbox : page.getByRole("textbox").first();
+      logger.info({ scoped: hasInline }, "composer opened in inline mode");
     }
   } catch (e) {
     try {
