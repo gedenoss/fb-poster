@@ -74,14 +74,17 @@ async function handleEnqueue(req: Request): Promise<Response> {
     return json({ error: "invalid_property_id" }, 400);
   }
 
-  // 1. Property must exist.
+  // 1. Property must exist and have available rooms.
   const { data: prop, error: propErr } = await supabase
     .from("property")
-    .select("id")
+    .select("id, available_room_for_sales")
     .eq("id", propertyId)
     .maybeSingle();
   if (propErr) return json({ error: "db_error", detail: propErr.message }, 500);
   if (!prop) return json({ error: "property_not_found" }, 404);
+  if (!(prop.available_room_for_sales > 0)) {
+    return json({ error: "no_available_rooms" }, 422);
+  }
 
   // 2. Limite hebdomadaire : 1 job par propriété par semaine calendaire.
   const weekStart = startOfCurrentWeek();
