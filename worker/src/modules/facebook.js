@@ -20,7 +20,6 @@ class RateLimitedError extends Error {
 
 const RE_PENDING = /en attente d.approbation de l.admin/i;
 const RE_RATE_LIMIT = /nous limitons le nombre de fois|you.re temporarily blocked|you can.t use this feature right now|limite.*laps de temps/i;
-const RE_ATTACH_PHOTO = /(photo|video|image|ajouter.*photo|añadir.*foto|adjuntar)/i;
 const RE_PUBLISH = /^(post|publish|publier|publicar)$/i;
 
 async function hasPendingText(page) {
@@ -208,7 +207,7 @@ async function submitTwoFactor(page, code) {
 }
 
 
-async function postToGroup(page, group, text, imagePaths) {
+async function postToGroup(page, group, text) {
   await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
@@ -383,30 +382,6 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
-  if (imagePaths && imagePaths.length) {
-    try {
-      await clickByRoleNameRegex(scope, "button", RE_ATTACH_PHOTO, {
-        timeout: 6000,
-      });
-      await human.sleep(human.randInt(700, 1500));
-    } catch {
-      /* file input may already be present */
-    }
-
-    const fileInputs = await page.locator('input[type="file"]').all();
-    let target = null;
-    for (const inp of fileInputs) {
-      const accept = (await inp.getAttribute("accept")) || "";
-      if (/image|\*|jpg|png/i.test(accept) || accept === "") {
-        target = inp;
-        break;
-      }
-    }
-    if (!target) throw new Error("no file input found in composer");
-    logger.info({ count: imagePaths.length, paths: imagePaths }, "setInputFiles");
-    await target.setInputFiles(imagePaths);
-    await waitForUploadsToFinish(scope === page ? page.locator("body") : scope);
-  }
 
   await human.sleep(human.randInt(2000, 5000));
 
@@ -441,39 +416,6 @@ async function postToGroup(page, group, text, imagePaths) {
   return await captureMostRecentPostUrl(page, group.url);
 }
 
-async function waitForUploadsToFinish(dialog, timeoutMs = 90_000) {
-  const start = Date.now();
-  const progressSelectors = [
-    'div[role="progressbar"]',
-    'div[aria-label*="Uploading" i]',
-    'div[aria-label*="En cours d" i]',
-    'div[aria-label*="Subiendo" i]',
-  ];
-  const previewSelector = [
-    'div[aria-label*="Remove" i]',
-    'button[aria-label*="Remove" i]',
-    'div[aria-label*="Supprimer" i]',
-    'button[aria-label*="Supprimer" i]',
-    'div[aria-label*="Retirer" i]',
-    'div[data-visualcompletion="media-vc-image"]',
-  ].join(", ");
-
-  await human.sleep(2000);
-
-  while (Date.now() - start < timeoutMs) {
-    let stillUploading = false;
-    for (const sel of progressSelectors) {
-      const cnt = await dialog.locator(sel).count().catch(() => 0);
-      if (cnt > 0) { stillUploading = true; break; }
-    }
-    if (!stillUploading) {
-      const previews = await dialog.locator(previewSelector).count().catch(() => 0);
-      if (previews > 0) return;
-    }
-    await human.sleep(800);
-  }
-  throw new Error("image upload did not finish within timeout");
-}
 
 async function findPublishButton(dialog) {
   const candidates = await dialog

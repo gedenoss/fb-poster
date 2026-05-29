@@ -4,7 +4,6 @@ const config = require("../config");
 const db = require("./db");
 const browser = require("./browser");
 const session = require("./session");
-const images = require("./images");
 const content = require("./content");
 const facebook = require("./facebook");
 const { SkippedPendingError, RateLimitedError } = facebook;
@@ -37,13 +36,11 @@ async function runJob(job) {
     return { status: "completed", posts: [] };
   }
 
-  const text = content.buildPostText(payload);
-  const localImgs = await images.downloadMany(payload.images || []);
-  logger.info({ images: payload.images, localImgs }, "images ready");
+  const text = content.buildPostText(payload, payload.images[0] || null);
   await db.log({
     jobId,
     action: "data_ready",
-    meta: { groups: groups.length, images: localImgs.length, hasText: !!text },
+    meta: { groups: groups.length, hasText: !!text },
   });
 
   let { browser: br, context, page } = await browser.launch();
@@ -91,12 +88,7 @@ async function runJob(job) {
         message: group.name,
       });
       try {
-        const postUrl = await facebook.postToGroup(
-          page,
-          group,
-          text,
-          localImgs,
-        );
+        const postUrl = await facebook.postToGroup(page, group, text);
         const recId = await db.recordPublishedPost({
           propertyId,
           groupId: group.id,
@@ -184,7 +176,6 @@ async function runJob(job) {
     try {
       await br.close().catch(() => {});
     } catch (_) {}
-    await images.cleanup().catch(() => {});
     await human.sleep(500);
   }
 
