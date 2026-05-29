@@ -117,7 +117,7 @@ COMMENT ON TABLE public.fb_session_state IS
 -- -------------------------------------------------------------------------
 CREATE OR REPLACE VIEW public.v_fb_property_payload
 WITH (security_invoker = true) AS
-SELECT
+SELECT DISTINCT ON (p.id)
     p.id                                          AS property_id,
     COALESCE(p.marketing_name, p.name)            AS title,
     p.city                                        AS city,
@@ -125,16 +125,36 @@ SELECT
     p.surface                                     AS surface_m2,
     p.bedroom_number                              AS bedrooms,
     p.image                                       AS cover_image,
-    pa.introduction                               AS description,
     (
         SELECT MIN(r.rent)
         FROM   public.room r
         WHERE  r.property_id = p.id
           AND  r.rent IS NOT NULL
           AND  r.rent > 0
-    )                                             AS price_from
-FROM        public.property p
-LEFT JOIN   public.vw_property_article pa ON pa.property_id = p.id;
+    )                                             AS price_from,
+    CASE
+        WHEN p.city = ANY (ARRAY[
+            'Suresnes', 'Saint-Denis', 'Puteaux', 'Neuilly-Sur-Seine',
+            'Montreuil', 'Levallois-Perret', 'Issy-les-Moulineaux',
+            'Courbevoie', 'Clichy', 'Boulogne-Billancourt',
+            'Asnières-Sur-Seine', 'Aulnay-Sous-Bois'
+        ]::text[])
+        THEN 'Paris'::text
+        ELSE p.city
+    END                                           AS zone,
+    vc_main.link                                  AS main_photo_url,
+    p.available_room_for_sales                    AS available_rooms
+FROM public.property p
+LEFT JOIN LATERAL (
+    SELECT vc.link
+    FROM   public.visual_content vc
+    WHERE  vc.property_id = p.id
+      AND  vc.is_main = true
+      AND  vc.link IS NOT NULL
+    ORDER BY vc.timestamp DESC
+    LIMIT 1
+) vc_main ON true
+ORDER BY p.id;
 
 COMMENT ON VIEW public.v_fb_property_payload IS
   'Flat payload consumed by the FB-posting worker to build the post text.';

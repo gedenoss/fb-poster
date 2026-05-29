@@ -126,7 +126,6 @@ async function fetchPropertyPayload(propertyId) {
     surface: base.surface_m2,
     bedrooms: base.bedrooms,
     availableRooms: base.available_rooms ?? null,
-    description: base.description || "",
     priceFrom: base.price_from,
     images: Array.from(new Set(images)).slice(0, 10),
   };
