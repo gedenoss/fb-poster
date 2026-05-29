@@ -1,18 +1,12 @@
-// supabase/functions/run-posting-job/index.ts
-// ---------------------------------------------------------------------------
-// Multi-route Edge Function for the FB poster.
+//   POST /run-posting-job
+//   GET  /run-posting-job/status?job_id=
+//   GET  /run-posting-job/session
 //
-//   POST /run-posting-job         { property_id }     → enqueue a job
-//   GET  /run-posting-job/status?job_id=...           → poll a job
-//   GET  /run-posting-job/session                     → session health (ok / needs_login)
-//
-// Env required:
+// env
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
-//   WORKER_URL          (e.g. https://fb-worker.onrender.com/trigger)
-//   WORKER_PUBLIC_URL   (e.g. https://fb-worker.onrender.com)
-//                         — returned to the frontend so it can open /relogin
-//   WORKER_SECRET       (shared with worker for HTTP triggers)
-// ---------------------------------------------------------------------------
+//   WORKER_URL
+//   WORKER_PUBLIC_URL
+//   WORKER_SECRET
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -33,8 +27,8 @@ const UUID_RE =
 
 function startOfCurrentWeek(): string {
   const now = new Date();
-  const day = now.getDay(); // 0=dimanche, 1=lundi...
-  const diff = day === 0 ? -6 : 1 - day; // ramène au lundi
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
@@ -55,38 +49,32 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
-
 async function handleEnqueue(req: Request): Promise<Response> {
   let payload: { property_id?: string; requested_by?: string };
   try {
     payload = await req.json();
   } catch {
-    return json({ error: "invalid_json" }, 400);
+    return json({ error: "invalid_json" });
   }
 
   const propertyId = payload.property_id?.trim();
   const requestedBy = payload.requested_by?.trim() || null;
 
   if (!propertyId || !UUID_RE.test(propertyId)) {
-    return json({ error: "invalid_property_id" }, 400);
+    return json({ error: "invalid_property_id" });
   }
 
-  // 1. Property must exist and have available rooms.
   const { data: prop, error: propErr } = await supabase
     .from("property")
     .select("id, available_room_for_sales")
     .eq("id", propertyId)
     .maybeSingle();
-  if (propErr) return json({ error: "db_error", detail: propErr.message }, 500);
-  if (!prop) return json({ error: "property_not_found" }, 404);
+  if (propErr) return json({ error: "db_error", detail: propErr.message });
+  if (!prop) return json({ error: "property_not_found" });
   if (!(prop.available_room_for_sales > 0)) {
-    return json({ error: "no_available_rooms" }, 422);
+    return json({ error: "no_available_rooms", message: "pas de room dispo dans cette property" });
   }
 
-  // 2. Limite hebdomadaire : 1 utilisation du bot par semaine calendaire (toutes propriétés).
   const weekStart = startOfCurrentWeek();
   const { data: weeklyJob } = await supabase
     .from("fb_posting_jobs")
@@ -101,13 +89,12 @@ async function handleEnqueue(req: Request): Promise<Response> {
     nextMonday.setHours(0, 0, 0, 0);
     return json({
       error: "weekly_limit_reached",
-      message: `Le bot a déjà été utilisé cette semaine. Prochain envoi possible le ${nextMonday.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}.`,
+      message: `bot déjà été utilisé cette semaine, prochain envoi possible le ${nextMonday.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })} :)`,
       job_id: weeklyJob.id,
       next_allowed_at: nextMonday.toISOString(),
-    }, 429);
+    });
   }
 
-  // 3. De-dupe: if there's already an in-flight job for this property, return it.
   const { data: existing } = await supabase
     .from("fb_posting_jobs")
     .select("id, status")
@@ -118,35 +105,21 @@ async function handleEnqueue(req: Request): Promise<Response> {
     .maybeSingle();
   if (existing) {
     const extras = await maybeReloginPayload(existing.status);
-    return json({
-      status: existing.status,
-      job_id: existing.id,
-      deduped: true,
-      ...extras,
-    });
+    return json({ status: existing.status, job_id: existing.id, deduped: true, ...extras });
   }
 
-  // 4. Enqueue.
   const { data: job, error: insErr } = await supabase
     .from("fb_posting_jobs")
-    .insert({
-      property_id: propertyId,
-      requested_by: requestedBy,
-      status: "queued",
-    })
+    .insert({ property_id: propertyId, requested_by: requestedBy, status: "queued" })
     .select("id")
     .single();
   if (insErr || !job)
-    return json({ error: "enqueue_failed", detail: insErr?.message }, 500);
+    return json({ error: "enqueue_failed", detail: insErr?.message });
 
-  // 4. Best-effort: ping the worker.
   if (WORKER_URL) {
     fetch(WORKER_URL, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-worker-key": WORKER_SECRET,
-      },
+      headers: { "content-type": "application/json", "x-worker-key": WORKER_SECRET },
       body: JSON.stringify({ job_id: job.id }),
     }).catch(() => {});
   }
@@ -156,16 +129,15 @@ async function handleEnqueue(req: Request): Promise<Response> {
 
 async function handleStatus(url: URL): Promise<Response> {
   const jobId = url.searchParams.get("job_id");
-  if (!jobId || !UUID_RE.test(jobId))
-    return json({ error: "invalid_job_id" }, 400);
+  if (!jobId || !UUID_RE.test(jobId)) return json({ error: "invalid_job_id" });
 
   const { data, error } = await supabase
     .from("fb_posting_jobs")
     .select("id, status, error, result, created_at, started_at, finished_at")
     .eq("id", jobId)
     .maybeSingle();
-  if (error) return json({ error: "db_error", detail: error.message }, 500);
-  if (!data) return json({ error: "not_found" }, 404);
+  if (error) return json({ error: "db_error", detail: error.message });
+  if (!data) return json({ error: "not_found" });
 
   const extras = await maybeReloginPayload(data.status);
   return json({ ...data, ...extras });
@@ -177,7 +149,7 @@ async function handleSession(): Promise<Response> {
     .select("status, last_check_at, last_ok_at, last_error, updated_at")
     .eq("id", 1)
     .maybeSingle();
-  if (error) return json({ error: "db_error", detail: error.message }, 500);
+  if (error) return json({ error: "db_error", detail: error.message });
   const extras = await maybeReloginPayload(data?.status ?? "unknown");
   return json({ ...data, ...extras });
 }
@@ -185,29 +157,17 @@ async function handleSession(): Promise<Response> {
 async function maybeReloginPayload(status: string | null | undefined) {
   if (status !== "needs_login") return {};
   let url = WORKER_PUBLIC_URL ? `${WORKER_PUBLIC_URL}/relogin` : null;
-  if (url && RELOGIN_TOKEN) {
-    url = `${url}?token=${encodeURIComponent(RELOGIN_TOKEN)}`;
-  }
-  return {
-    relogin_url: url,
-  };
+  if (url && RELOGIN_TOKEN) url = `${url}?token=${encodeURIComponent(RELOGIN_TOKEN)}`;
+  return { relogin_url: url };
 }
 
-// ---------------------------------------------------------------------------
-// Router
-// ---------------------------------------------------------------------------
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, "");
 
-  // Path layout supports both Supabase function paths and direct.
-  // Supabase will route any subpath under /run-posting-job to this function.
-  if (
-    req.method === "POST" &&
-    (path.endsWith("/run-posting-job") || path === "")
-  ) {
+  if (req.method === "POST" && (path.endsWith("/run-posting-job") || path === "")) {
     return handleEnqueue(req);
   }
   if (req.method === "GET" && path.endsWith("/status")) {
@@ -216,5 +176,5 @@ serve(async (req) => {
   if (req.method === "GET" && path.endsWith("/session")) {
     return handleSession();
   }
-  return json({ error: "not_found" }, 404);
+  return json({ error: "not_found" });
 });
