@@ -125,6 +125,13 @@ SELECT DISTINCT ON (p.id)
     p.address                                     AS address,
     p.surface                                     AS surface_m2,
     p.bedroom_number                              AS bedrooms,
+    p.bathroom                                    AS bathrooms,
+    p.toilet                                      AS toilets,
+    (
+        SELECT COUNT(*)::integer
+        FROM jsonb_array_elements(COALESCE(p.property_features, '[]'::jsonb)) elem
+        WHERE (elem.value->>'room_name') ILIKE 'Balcon%'
+    )                                             AS balconies,
     p.image                                       AS cover_image,
     p.available_room_for_sales                    AS available_rooms,
     (
@@ -148,7 +155,10 @@ SELECT DISTINCT ON (p.id)
     bedrooms_photos.bedroom_2                     AS bedroom_photo_2,
     bedrooms_photos.bedroom_3                     AS bedroom_photo_3,
     kitchen_photo.link                            AS kitchen_photo,
-    living_room_photo.link                        AS living_room_photo
+    living_room_photo.link                        AS living_room_photo,
+    ts.name                                       AS nearest_station,
+    pi.nearest_station_distance_m                 AS nearest_station_distance_m,
+    station_lines.lines                           AS nearest_station_lines
 FROM public.property p
 LEFT JOIN LATERAL (
     SELECT
@@ -185,6 +195,18 @@ LEFT JOIN LATERAL (
     ORDER BY vc.timestamp DESC
     LIMIT 1
 ) living_room_photo ON true
+LEFT JOIN LATERAL (
+    SELECT pi_in.nearest_station_id, pi_in.nearest_station_distance_m
+    FROM public.property_information pi_in
+    WHERE pi_in.property_id = p.id
+    LIMIT 1
+) pi ON true
+LEFT JOIN public.transport_station ts ON ts.id = pi.nearest_station_id
+LEFT JOIN LATERAL (
+    SELECT string_agg(tsl.line_label, ', ' ORDER BY tsl.sort_order) AS lines
+    FROM public.transport_station_line tsl
+    WHERE tsl.station_id = pi.nearest_station_id
+) station_lines ON true
 ORDER BY p.id;
 
 COMMENT ON VIEW public.v_fb_property_payload IS

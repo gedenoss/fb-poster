@@ -1,64 +1,87 @@
 "use strict";
 
-function formatPrice(value) {
-  if (value === null || value === undefined) return "";
-  const n = Number(value);
-  if (Number.isNaN(n) || n <= 0) return "";
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
 function buildPostText(payload) {
-  const price = formatPrice(payload.priceFrom);
   const city = (payload.city || "").trim();
-  const title = (payload.title || "").trim();
-  const surface = payload.surface ? `${payload.surface}m²` : null;
-  const totalRooms = payload.bedrooms || null;
-  const available = payload.availableRooms > 0 ? payload.availableRooms : null;
+  const surface = payload.surface || null;
+  const bedrooms = payload.bedrooms || null;
+  const bathrooms = payload.bathrooms || null;
+  const toilets = payload.toilets || null;
+  const balconies = payload.balconies || 0;
+  const price = payload.priceFrom ? Math.round(payload.priceFrom) : null;
+  const lines = payload.nearestStationLines || null;
 
-  const variant = Math.floor(Math.random() * 3);
-  let lines;
+  // ── French ──────────────────────────────────────────────────────────────
+  const fr = [];
 
-  if (variant === 0) {
-    lines = ["Bonjour !", ""];
-    if (available) {
-      const ch = available > 1 ? "chambres disponibles" : "chambre disponible";
-      lines.push(`Il reste ${available} ${ch}${city ? ` à ${city}` : ""}.`);
-    }
-    lines.push("");
-    const specs = [title, surface, totalRooms ? `${totalRooms} chambre${totalRooms > 1 ? "s" : ""} au total` : null].filter(Boolean).join(" — ");
-    if (specs) lines.push(specs);
-    if (price) lines.push(`Loyer à partir de ${price} / mois.`);
-    lines.push("", "N'hésitez pas à me contacter par message pour plus d'informations !");
-  } else if (variant === 1) {
-    lines = ["Bonjour à tous !", ""];
-    if (available && city) {
-      const ch = available > 1 ? "chambres à louer" : "chambre à louer";
-      lines.push(`Nous proposons ${available} ${ch} à ${city}.`);
-    }
-    lines.push("");
-    if (title) lines.push(title);
-    const specs = [surface, totalRooms ? `${totalRooms} chambre${totalRooms > 1 ? "s" : ""} au total` : null].filter(Boolean).join(", ");
-    if (specs) lines.push(specs);
-    if (price) lines.push(`À partir de ${price} / mois.`);
-    lines.push("", "Contactez-moi en message privé pour organiser une visite !");
-  } else {
-    lines = [];
-    if (available) {
-      const ch = available > 1 ? "chambres disponibles" : "chambre disponible";
-      lines.push(`${available} ${ch}${city ? ` à ${city}` : ""} !`, "");
-    }
-    if (title) lines.push(title);
-    const specs = [surface, totalRooms ? `${totalRooms} chambre${totalRooms > 1 ? "s" : ""}` : null].filter(Boolean).join(" — ");
-    if (specs) lines.push(specs);
-    if (price) lines.push(`Loyer : à partir de ${price} / mois.`);
-    lines.push("", "Pour plus d'infos, envoyez-moi un message !");
+  fr.push(`Toujours à la recherche d'un(e) coloc pour rejoindre notre colocation${city ? ` à ${city}` : ""}.`);
+  fr.push("");
+
+  if (lines) {
+    fr.push(`Il est situé au pied du métro ligne ${lines}.`);
+    fr.push("");
   }
 
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const frEquip = [];
+  if (balconies > 0) frEquip.push(`${balconies} balcon${balconies > 1 ? "s" : ""}`);
+  if (toilets) frEquip.push(`${toilets} WC`);
+  if (bathrooms) frEquip.push(`${bathrooms} salle${bathrooms > 1 ? "s" : ""} de bains`);
+  fr.push(`L'appartement est complètement meublé et équipé${frEquip.length ? `, ${frEquip.join(", ")}` : ""}.`);
+  fr.push("");
+
+  if (bedrooms || surface) {
+    const sizeStr = bedrooms ? `C'est une coloc de ${bedrooms} chambre${bedrooms > 1 ? "s" : ""}` : "C'est une colocation";
+    fr.push(`${sizeStr}${surface ? ` de ${surface}m²` : ""}.`);
+    fr.push("");
+  }
+
+  if (price) {
+    fr.push(`Niveau loyer, il faut compter entre ${price} euros par mois avec Internet, électricité, chauffage, assurance, etc.`);
+    fr.push("");
+  }
+
+  fr.push("N'hésitez pas à me contacter en MP si vous souhaitez plus d'informations ou si vous souhaitez venir visiter.");
+  fr.push("");
+  fr.push("À très vite !");
+
+  // ── English ─────────────────────────────────────────────────────────────
+  const en = [];
+
+  en.push("--");
+  en.push("");
+  en.push("Hello!");
+  en.push("");
+  en.push(`We're still looking for a flatmate to join our shared apartment${city ? ` in ${city}` : ""}.`);
+  en.push("");
+
+  if (lines) {
+    en.push(`It's located right next to metro line ${lines}.`);
+    en.push("");
+  }
+
+  const enEquip = [];
+  if (balconies > 0) en.push(`with ${balconies} outdoor balcon${balconies > 1 ? "ies" : "y"}`);
+  if (toilets) enEquip.push(`${toilets} toilet${toilets > 1 ? "s" : ""}`);
+  if (bathrooms) enEquip.push(`${bathrooms} shared bathroom${bathrooms > 1 ? "s" : ""}`);
+  const enEquipFull = [balconies > 0 ? `${balconies} outdoor balcon${balconies > 1 ? "ies" : "y"}` : null, ...enEquip].filter(Boolean);
+  en.push(`The flat is fully furnished${enEquipFull.length ? `, with ${enEquipFull.join(", ")}` : ""}.`);
+  en.push("");
+
+  if (bedrooms || surface) {
+    const enSize = bedrooms ? `The flat is a ${bedrooms}-room flat sharing` : "The flat is a shared apartment";
+    en.push(`${enSize}${surface ? ` of ${surface}sqm` : ""}.`);
+    en.push("");
+  }
+
+  if (price) {
+    en.push(`The rent is ${price} euros per month, including internet, electricity, heating, insurance, etc.`);
+    en.push("");
+  }
+
+  en.push("Feel free to message me if you'd like more information or if you'd like to come visit.");
+  en.push("");
+  en.push("See you soon!");
+
+  return [...fr, ...en].join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 module.exports = { buildPostText };

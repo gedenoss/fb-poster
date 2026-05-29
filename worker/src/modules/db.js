@@ -131,8 +131,13 @@ async function fetchPropertyPayload(propertyId) {
     address: base.address || "",
     surface: base.surface_m2,
     bedrooms: base.bedrooms,
+    bathrooms: base.bathrooms || null,
+    toilets: base.toilets || null,
+    balconies: base.balconies || 0,
     availableRooms: base.available_rooms ?? null,
     priceFrom: base.price_from,
+    nearestStation: base.nearest_station || null,
+    nearestStationLines: base.nearest_station_lines || null,
     images: Array.from(new Set(images)),
   };
 }
