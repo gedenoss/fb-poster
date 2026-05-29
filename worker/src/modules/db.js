@@ -115,7 +115,8 @@ async function fetchPropertyPayload(propertyId) {
   if (!base) throw new Error(`property ${propertyId} not found`);
 
   const images = [];
-  if (base.cover_image) images.push(base.cover_image);
+  if (base.main_photo_url) images.push(base.main_photo_url);
+  else if (base.cover_image) images.push(base.cover_image);
 
   return {
     propertyId: base.property_id,
