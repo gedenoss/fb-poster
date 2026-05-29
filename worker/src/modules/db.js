@@ -114,9 +114,14 @@ async function fetchPropertyPayload(propertyId) {
   if (error) throw error;
   if (!base) throw new Error(`property ${propertyId} not found`);
 
-  const images = [];
-  if (base.main_photo_url) images.push(base.main_photo_url);
-  else if (base.cover_image) images.push(base.cover_image);
+  const images = [
+    base.bedroom_photo_1,
+    base.bedroom_photo_2,
+    base.bedroom_photo_3,
+    base.kitchen_photo,
+    base.living_room_photo,
+  ].filter(Boolean);
+  if (images.length === 0 && base.cover_image) images.push(base.cover_image);
 
   return {
     propertyId: base.property_id,
@@ -128,7 +133,7 @@ async function fetchPropertyPayload(propertyId) {
     bedrooms: base.bedrooms,
     availableRooms: base.available_rooms ?? null,
     priceFrom: base.price_from,
-    images: Array.from(new Set(images)).slice(0, 10),
+    images: Array.from(new Set(images)),
   };
 }
 

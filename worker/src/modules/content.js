@@ -11,7 +11,7 @@ function formatPrice(value) {
   }).format(n);
 }
 
-function buildPostText(payload, imageUrl) {
+function buildPostText(payload) {
   const price = formatPrice(payload.priceFrom);
   const city = (payload.city || "").trim();
   const title = (payload.title || "").trim();
@@ -57,8 +57,6 @@ function buildPostText(payload, imageUrl) {
     if (price) lines.push(`Loyer : à partir de ${price} / mois.`);
     lines.push("", "Pour plus d'infos, envoyez-moi un message !");
   }
-
-  if (imageUrl) lines.push("", imageUrl);
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

@@ -207,7 +207,7 @@ async function submitTwoFactor(page, code) {
 }
 
 
-async function postToGroup(page, group, text) {
+async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
@@ -382,6 +382,41 @@ async function postToGroup(page, group, text) {
   await human.humanType(textbox, text);
   await human.sleep(human.randInt(800, 2000));
 
+  if (imagePaths && imagePaths.length) {
+    const RE_ATTACH = /(photo|vidéo|video|image|ajouter.*photo)/i;
+    const RE_UPLOAD_FROM_PC = /(télécharger|upload|ordinateur|computer|depuis.*fichier)/i;
+
+    let fileChooser = null;
+
+    try {
+      const chooserPromise = page.waitForEvent("filechooser", { timeout: 8000 });
+      await clickByRoleNameRegex(scope, "button", RE_ATTACH, { timeout: 6000 });
+      logger.info("attach photo button clicked — waiting for filechooser");
+      fileChooser = await chooserPromise;
+      logger.info("filechooser opened (direct)");
+    } catch (e) {
+      logger.warn({ err: e.message }, "direct filechooser failed — trying secondary upload button");
+      try {
+        const chooserPromise2 = page.waitForEvent("filechooser", { timeout: 8000 });
+        const uploadBtn = scope.getByRole("button", { name: RE_UPLOAD_FROM_PC }).first();
+        const visible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
+        logger.info({ visible }, "secondary upload button visibility");
+        if (visible) await uploadBtn.click();
+        fileChooser = await chooserPromise2;
+        logger.info("filechooser opened (secondary)");
+      } catch (e2) {
+        logger.warn({ err: e2.message }, "filechooser never fired");
+      }
+    }
+
+    if (fileChooser) {
+      await fileChooser.setFiles(imagePaths);
+      logger.info({ count: imagePaths.length, paths: imagePaths }, "photos set via filechooser — waiting 15s for upload");
+      await human.sleep(15_000);
+    } else {
+      logger.warn({ count: imagePaths.length }, "posting without photos — filechooser did not open");
+    }
+  }
 
   await human.sleep(human.randInt(2000, 5000));
 

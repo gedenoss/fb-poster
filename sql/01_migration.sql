@@ -115,7 +115,8 @@ COMMENT ON TABLE public.fb_session_state IS
 -- -------------------------------------------------------------------------
 -- 6) Property pricing — flat view for the worker
 -- -------------------------------------------------------------------------
-CREATE OR REPLACE VIEW public.v_fb_property_payload
+DROP VIEW IF EXISTS public.v_fb_property_payload;
+CREATE VIEW public.v_fb_property_payload
 WITH (security_invoker = true) AS
 SELECT DISTINCT ON (p.id)
     p.id                                          AS property_id,
@@ -125,6 +126,7 @@ SELECT DISTINCT ON (p.id)
     p.surface                                     AS surface_m2,
     p.bedroom_number                              AS bedrooms,
     p.image                                       AS cover_image,
+    p.available_room_for_sales                    AS available_rooms,
     (
         SELECT MIN(r.rent)
         FROM   public.room r
@@ -142,18 +144,47 @@ SELECT DISTINCT ON (p.id)
         THEN 'Paris'::text
         ELSE p.city
     END                                           AS zone,
-    vc_main.link                                  AS main_photo_url,
-    p.available_room_for_sales                    AS available_rooms
+    bedrooms_photos.bedroom_1                     AS bedroom_photo_1,
+    bedrooms_photos.bedroom_2                     AS bedroom_photo_2,
+    bedrooms_photos.bedroom_3                     AS bedroom_photo_3,
+    kitchen_photo.link                            AS kitchen_photo,
+    living_room_photo.link                        AS living_room_photo
 FROM public.property p
 LEFT JOIN LATERAL (
+    SELECT
+        MAX(CASE WHEN rn = 1 THEN link END) AS bedroom_1,
+        MAX(CASE WHEN rn = 2 THEN link END) AS bedroom_2,
+        MAX(CASE WHEN rn = 3 THEN link END) AS bedroom_3
+    FROM (
+        SELECT vc.link, ROW_NUMBER() OVER (ORDER BY vc.timestamp DESC) AS rn
+        FROM public.visual_content vc
+        LEFT JOIN public.room r2 ON r2.id = vc.room_id
+        WHERE (vc.property_id = p.id OR r2.property_id = p.id)
+          AND vc.description = 'bedroom'
+          AND vc.link IS NOT NULL
+    ) ranked
+    WHERE rn <= 3
+) bedrooms_photos ON true
+LEFT JOIN LATERAL (
     SELECT vc.link
-    FROM   public.visual_content vc
-    WHERE  vc.property_id = p.id
-      AND  vc.is_main = true
-      AND  vc.link IS NOT NULL
+    FROM public.visual_content vc
+    LEFT JOIN public.room r2 ON r2.id = vc.room_id
+    WHERE (vc.property_id = p.id OR r2.property_id = p.id)
+      AND vc.description = 'kitchen'
+      AND vc.link IS NOT NULL
     ORDER BY vc.timestamp DESC
     LIMIT 1
-) vc_main ON true
+) kitchen_photo ON true
+LEFT JOIN LATERAL (
+    SELECT vc.link
+    FROM public.visual_content vc
+    LEFT JOIN public.room r2 ON r2.id = vc.room_id
+    WHERE (vc.property_id = p.id OR r2.property_id = p.id)
+      AND vc.description = 'living_room'
+      AND vc.link IS NOT NULL
+    ORDER BY vc.timestamp DESC
+    LIMIT 1
+) living_room_photo ON true
 ORDER BY p.id;
 
 COMMENT ON VIEW public.v_fb_property_payload IS
