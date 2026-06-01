@@ -428,11 +428,9 @@ async function postToGroup(page, group, text, imagePaths) {
     }
 
     if (fileChooser) {
-      await fileChooser.setFiles(imagePaths);
-      logger.info(
-        { count: imagePaths.length, paths: imagePaths },
-        "photos set via filechooser — waiting 15s for upload",
-      );
+      const files = fileChooser.isMultiple() ? imagePaths : [imagePaths[0]];
+      await fileChooser.setFiles(files);
+      logger.info({ count: files.length, multiple: fileChooser.isMultiple() }, "photos set via filechooser — waiting 15s for upload");
       await human.sleep(15_000);
     } else {
       logger.warn(
@@ -453,7 +451,8 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(400, 900));
   await publishBtn.click({ delay: human.randInt(60, 180) });
 
-  await human.sleep(1500);
+  await human.sleep(2500);
+  if (await hasRateLimitText(page)) throw new RateLimitedError();
   const RE_CONFIRM =
     /^(continuer|continue|ok|confirmer|confirm|soumettre|submit)$/i;
   try {
