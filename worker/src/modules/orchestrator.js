@@ -117,6 +117,13 @@ async function runJob(job) {
           await notify(`⚠️ Facebook a limité le compte — job arrêté après ${result.posts.filter(p => p.status === "success").length} groupe(s).`).catch(() => {});
           result.posts.push({ group_id: group.id, group_name: group.name, status: "failed", error: "rate_limited" });
           break;
+        } else if (err.message === "session_expired") {
+          logger.warn({ group: group.name }, "session expirée détectée mid-job");
+          await notify(
+            `:warning: *Session Facebook expirée* détectée pendant le job. Le job pour la propriété \`${propertyId}\` est en attente.`,
+            { linkText: "Se reconnecter", linkUrl: reloginLink() },
+          );
+          return { needsLogin: true };
         } else if (err instanceof SkippedPendingError) {
           logger.info({ group: group.name }, "post annulé — publication déjà en attente");
           result.posts.push({

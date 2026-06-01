@@ -211,6 +211,12 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
 
+  const currentUrl = page.url();
+  if (/\/(login|checkpoint|recover)/i.test(currentUrl)) {
+    logger.warn({ url: currentUrl }, "session expired — redirected to login");
+    throw new Error("session_expired");
+  }
+
   if (await hasRateLimitText(page)) {
     logger.warn({ groupUrl: group.url }, "rate limited by facebook");
     throw new RateLimitedError();
