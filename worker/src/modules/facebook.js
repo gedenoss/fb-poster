@@ -6,28 +6,37 @@ const TIMEOUT = 30_000;
 
 class SkippedPendingError extends Error {
   constructor() {
-    super('already_pending');
-    this.name = 'SkippedPendingError';
+    super("already_pending");
+    this.name = "SkippedPendingError";
   }
 }
 
 class RateLimitedError extends Error {
   constructor() {
-    super('rate_limited_by_facebook');
-    this.name = 'RateLimitedError';
+    super("rate_limited_by_facebook");
+    this.name = "RateLimitedError";
   }
 }
 
 const RE_PENDING = /en attente d.approbation de l.admin/i;
-const RE_RATE_LIMIT = /nous limitons le nombre de fois|you.re temporarily blocked|you can.t use this feature right now|limite.*laps de temps/i;
+const RE_RATE_LIMIT =
+  /nous limitons le nombre de fois|you.re temporarily blocked|you can.t use this feature right now|limite.*laps de temps/i;
 const RE_PUBLISH = /^(post|publish|publier|publicar)$/i;
 
 async function hasPendingText(page) {
-  return page.getByText(RE_PENDING).first().isVisible({ timeout: 1200 }).catch(() => false);
+  return page
+    .getByText(RE_PENDING)
+    .first()
+    .isVisible({ timeout: 1200 })
+    .catch(() => false);
 }
 
 async function hasRateLimitText(page) {
-  return page.getByText(RE_RATE_LIMIT).first().isVisible({ timeout: 1200 }).catch(() => false);
+  return page
+    .getByText(RE_RATE_LIMIT)
+    .first()
+    .isVisible({ timeout: 1200 })
+    .catch(() => false);
 }
 
 async function findByRoleNameRegex(
@@ -80,12 +89,10 @@ async function loginWithCredentials(page, { email, password }) {
   await human.sleep(human.randInt(1500, 3000));
   await dismissCookieBanner(page);
 
-  // Fill the email + password inputs. Facebook stable IDs: #email, #pass.
   const emailIn = page.locator('input#email, input[name="email"]').first();
   const passIn = page.locator('input#pass, input[name="pass"]').first();
   await emailIn.waitFor({ state: "visible", timeout: 15_000 });
 
-  // Click the field then type humanly.
   await emailIn.click();
   await human.humanType(emailIn, email);
   await human.sleep(human.randInt(500, 1200));
@@ -93,7 +100,6 @@ async function loginWithCredentials(page, { email, password }) {
   await human.humanType(passIn, password);
   await human.sleep(human.randInt(600, 1400));
 
-  // Submit.
   const submitBtn = page
     .locator(
       'button[name="login"], button[type="submit"]#loginbutton, [data-testid="royal_login_button"]',
@@ -105,7 +111,6 @@ async function loginWithCredentials(page, { email, password }) {
     await page.keyboard.press("Enter");
   }
 
-  // Wait for navigation away from /login.
   await page
     .waitForLoadState("domcontentloaded", { timeout: 45_000 })
     .catch(() => {});
@@ -114,7 +119,6 @@ async function loginWithCredentials(page, { email, password }) {
   const url = page.url();
 
   if (/\/checkpoint/i.test(url)) {
-    // Could be 2FA prompt or device approval.
     const has2faInput = await page
       .locator(
         'input[name="approvals_code"], input[autocomplete="one-time-code"]',
@@ -130,7 +134,6 @@ async function loginWithCredentials(page, { email, password }) {
     return { ok: false, reason: "bad_credentials" };
   }
 
-  // Look for a logged-in indicator.
   const indicators = [
     '[aria-label*="Create a post" i]',
     '[aria-label*="Créer une publication" i]',
@@ -158,7 +161,6 @@ async function loginWithCredentials(page, { email, password }) {
     }
   }
 
-  // Final check: if we're not on /login or /checkpoint, we're likely logged in
   const finalUrl = page.url();
   if (!/\/(login|checkpoint)/i.test(finalUrl)) {
     return { ok: true };
@@ -178,7 +180,6 @@ async function submitTwoFactor(page, code) {
   await human.humanType(input, code);
   await human.sleep(human.randInt(500, 1200));
 
-  // Click "Continue".
   const re = /^(continue|continuer|next|suivant|continuar)$/i;
   try {
     await clickByRoleNameRegex(page, "button", re, { timeout: 8000 });
@@ -190,7 +191,6 @@ async function submitTwoFactor(page, code) {
     .catch(() => {});
   await human.sleep(human.randInt(3000, 5000));
 
-  // Dismiss "remember this device" etc.
   const trustRe = /^(yes|oui|sí|continue|continuer|next|suivant)$/i;
   for (let i = 0; i < 3; i++) {
     try {
@@ -206,7 +206,6 @@ async function submitTwoFactor(page, code) {
     : { ok: true };
 }
 
-
 async function postToGroup(page, group, text, imagePaths) {
   await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
   await human.sleep(human.randInt(2000, 4000));
@@ -218,7 +217,10 @@ async function postToGroup(page, group, text, imagePaths) {
   }
 
   if (await hasPendingText(page)) {
-    logger.info({ groupUrl: group.url }, "pending post detected, skipping group");
+    logger.info(
+      { groupUrl: group.url },
+      "pending post detected, skipping group",
+    );
     throw new SkippedPendingError();
   }
 
@@ -355,9 +357,13 @@ async function postToGroup(page, group, text, imagePaths) {
       textbox = dialog.getByRole("textbox").first();
       logger.info("composer opened in dialog mode");
     } else {
-      const inlineForm = page.locator('[role="main"] form, [role="main"] [role="article"]').first();
+      const inlineForm = page
+        .locator('[role="main"] form, [role="main"] [role="article"]')
+        .first();
       const inlineTextbox = inlineForm.getByRole("textbox").first();
-      const hasInline = await inlineTextbox.isVisible({ timeout: 2000 }).catch(() => false);
+      const hasInline = await inlineTextbox
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
       scope = hasInline ? inlineForm : page;
       textbox = hasInline ? inlineTextbox : page.getByRole("textbox").first();
       logger.info({ scoped: hasInline }, "composer opened in inline mode");
@@ -384,22 +390,34 @@ async function postToGroup(page, group, text, imagePaths) {
 
   if (imagePaths && imagePaths.length) {
     const RE_ATTACH = /(photo|vidéo|video|image|ajouter.*photo)/i;
-    const RE_UPLOAD_FROM_PC = /(télécharger|upload|ordinateur|computer|depuis.*fichier)/i;
+    const RE_UPLOAD_FROM_PC =
+      /(télécharger|upload|ordinateur|computer|depuis.*fichier)/i;
 
     let fileChooser = null;
 
     try {
-      const chooserPromise = page.waitForEvent("filechooser", { timeout: 8000 });
+      const chooserPromise = page.waitForEvent("filechooser", {
+        timeout: 8000,
+      });
       await clickByRoleNameRegex(scope, "button", RE_ATTACH, { timeout: 6000 });
       logger.info("attach photo button clicked — waiting for filechooser");
       fileChooser = await chooserPromise;
       logger.info("filechooser opened (direct)");
     } catch (e) {
-      logger.warn({ err: e.message }, "direct filechooser failed — trying secondary upload button");
+      logger.warn(
+        { err: e.message },
+        "direct filechooser failed — trying secondary upload button",
+      );
       try {
-        const chooserPromise2 = page.waitForEvent("filechooser", { timeout: 8000 });
-        const uploadBtn = scope.getByRole("button", { name: RE_UPLOAD_FROM_PC }).first();
-        const visible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
+        const chooserPromise2 = page.waitForEvent("filechooser", {
+          timeout: 8000,
+        });
+        const uploadBtn = scope
+          .getByRole("button", { name: RE_UPLOAD_FROM_PC })
+          .first();
+        const visible = await uploadBtn
+          .isVisible({ timeout: 3000 })
+          .catch(() => false);
         logger.info({ visible }, "secondary upload button visibility");
         if (visible) await uploadBtn.click();
         fileChooser = await chooserPromise2;
@@ -411,10 +429,16 @@ async function postToGroup(page, group, text, imagePaths) {
 
     if (fileChooser) {
       await fileChooser.setFiles(imagePaths);
-      logger.info({ count: imagePaths.length, paths: imagePaths }, "photos set via filechooser — waiting 15s for upload");
+      logger.info(
+        { count: imagePaths.length, paths: imagePaths },
+        "photos set via filechooser — waiting 15s for upload",
+      );
       await human.sleep(15_000);
     } else {
-      logger.warn({ count: imagePaths.length }, "posting without photos — filechooser did not open");
+      logger.warn(
+        { count: imagePaths.length },
+        "posting without photos — filechooser did not open",
+      );
     }
   }
 
@@ -429,9 +453,9 @@ async function postToGroup(page, group, text, imagePaths) {
   await human.sleep(human.randInt(400, 900));
   await publishBtn.click({ delay: human.randInt(60, 180) });
 
-  // Certains groupes affichent une confirmation "soumis à modération — continuer ?"
   await human.sleep(1500);
-  const RE_CONFIRM = /^(continuer|continue|ok|confirmer|confirm|soumettre|submit)$/i;
+  const RE_CONFIRM =
+    /^(continuer|continue|ok|confirmer|confirm|soumettre|submit)$/i;
   try {
     const confirmBtn = page.getByRole("button", { name: RE_CONFIRM }).first();
     if (await confirmBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -450,7 +474,6 @@ async function postToGroup(page, group, text, imagePaths) {
 
   return await captureMostRecentPostUrl(page, group.url);
 }
-
 
 async function findPublishButton(dialog) {
   const candidates = await dialog
@@ -474,7 +497,9 @@ async function captureMostRecentPostUrl(page, groupUrl) {
     await article.waitFor({ state: "visible", timeout: 20_000 });
 
     const link = article
-      .locator('a[href*="/posts/"], a[href*="/permalink/"], a[href*="/groups/"][href*="?"]')
+      .locator(
+        'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/groups/"][href*="?"]',
+      )
       .first();
     const href = await link.getAttribute("href", { timeout: 10_000 });
     if (href)

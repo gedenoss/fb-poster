@@ -48,3 +48,10 @@ queued : en attente. running : en cours. completed : tout a reussi. partial : ce
     MAX_GROUPS_PER_JOB
 
 TEST_MODE=true limite le bot aux groupes marques is_test=true. mettre false pour la prod
+
+UPDATE fb_posting_jobs
+SET status = 'failed'
+WHERE created_at >= '2026-05-26'
+AND status IN ('queued', 'running',
+'completed', 'partial');
+met les job en fail pour esquiver la limit par semaine

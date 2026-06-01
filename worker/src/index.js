@@ -12,7 +12,6 @@ let busy = false;
 async function tryProcessNext({ jobId } = {}) {
   if (busy) return { skipped: true, reason: "busy" };
 
-  // Don't pick up jobs if the session is known to be dead.
   const ss = await db.getSessionState();
   if (ss && ss.status === "needs_login") {
     return { skipped: true, reason: "session_needs_login" };
@@ -145,7 +144,10 @@ function shutdown(sig) {
   const deadline = setTimeout(() => process.exit(0), 30_000);
   deadline.unref();
   const poll = setInterval(() => {
-    if (!busy) { clearInterval(poll); process.exit(0); }
+    if (!busy) {
+      clearInterval(poll);
+      process.exit(0);
+    }
   }, 500);
 }
 process.on("SIGINT", shutdown);

@@ -1,15 +1,3 @@
-#!/usr/bin/env node
-/**
- * Convert cookies exported from "Cookie-Editor" extension into the
- * Playwright storageState.json format expected by this worker.
- *
- * Usage:
- *   1. Export cookies for facebook.com using the Cookie-Editor extension (JSON format)
- *   2. Save them to ./cookies-export.json
- *   3. Run: node convert-cookies.js
- *   4. The result is written to ./state.json
- *   5. Upload state.json to the Supabase bucket "fb-sessions" as "state.json"
- */
 const fs = require("fs");
 const path = require("path");
 
@@ -31,7 +19,6 @@ if (!Array.isArray(cookieList)) {
 }
 
 const cookies = cookieList.map((c) => {
-  // Cookie-Editor format → Playwright format
   const out = {
     name: c.name,
     value: c.value,
@@ -42,7 +29,6 @@ const cookies = cookieList.map((c) => {
     sameSite: "Lax",
   };
 
-  // sameSite mapping
   if (c.sameSite) {
     const s = c.sameSite.toLowerCase();
     if (s === "no_restriction" || s === "none") out.sameSite = "None";
@@ -50,14 +36,11 @@ const cookies = cookieList.map((c) => {
     else if (s === "strict") out.sameSite = "Strict";
   }
 
-  // Expiry: Playwright wants `expires` as a Unix timestamp in seconds
-  // (or -1 for session cookies). Cookie-Editor gives `expirationDate` in seconds.
   if (typeof c.expirationDate === "number") {
     out.expires = Math.floor(c.expirationDate);
   } else if (c.session) {
     out.expires = -1;
   } else {
-    // Default: 30 days from now
     out.expires = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
   }
 
@@ -66,7 +49,7 @@ const cookies = cookieList.map((c) => {
 
 const storageState = {
   cookies,
-  origins: [], // we don't need localStorage for FB session continuity
+  origins: [],
 };
 
 fs.writeFileSync(OUTPUT, JSON.stringify(storageState, null, 2));
