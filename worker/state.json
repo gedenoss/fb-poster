@@ -8,7 +8,7 @@
       "httpOnly": false,
       "secure": true,
       "sameSite": "None",
-      "expires": 1811595298
+      "expires": 1811835192
     },
     {
       "name": "datr",
@@ -22,17 +22,17 @@
     },
     {
       "name": "oo",
-      "value": "v1%7C3%3A1780057929",
+      "value": "v1%7C3%3A1780299191",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": true,
       "secure": true,
       "sameSite": "None",
-      "expires": 1814617930
+      "expires": 1814859191
     },
     {
       "name": "presence",
-      "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1780059310121%2C%22v%22%3A1%7D",
+      "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1780299533941%2C%22v%22%3A1%7D",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": false,
@@ -48,7 +48,7 @@
       "httpOnly": true,
       "secure": true,
       "sameSite": "None",
-      "expires": 1814617929
+      "expires": 1814859191
     },
     {
       "name": "wd",
@@ -58,17 +58,17 @@
       "httpOnly": false,
       "secure": true,
       "sameSite": "Lax",
-      "expires": 1780664110
+      "expires": 1780904333
     },
     {
       "name": "xs",
-      "value": "20%3AjkUKfeeWucnKPA%3A2%3A1780057926%3A-1%3A-1%3A%3AAczICMmMLKsuYkxYmL8xtxwFZruIS3gRm6RbhyGg3w",
+      "value": "47%3Ae4zpA3P980NGCw%3A2%3A1780299189%3A-1%3A-1%3A%3AAcztNGL6mQqay-H_npZ0Cxu8FJOZxXp-iHqlD3KPbQ",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": true,
       "secure": true,
       "sameSite": "None",
-      "expires": 1811595298
+      "expires": 1811835192
     }
   ],
   "origins": []
