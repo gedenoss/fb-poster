@@ -357,6 +357,8 @@ async function postToGroup(page, group, text, imagePaths) {
       textbox = dialog.getByRole("textbox").first();
       logger.info("composer opened in dialog mode");
     } else {
+      await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+      await human.sleep(500);
       const inlineForm = page
         .locator('[role="main"] form, [role="main"] [role="article"]')
         .first();
@@ -364,9 +366,10 @@ async function postToGroup(page, group, text, imagePaths) {
       const hasInline = await inlineTextbox
         .isVisible({ timeout: 2000 })
         .catch(() => false);
-      scope = hasInline ? inlineForm : page;
-      textbox = hasInline ? inlineTextbox : page.getByRole("textbox").first();
-      logger.info({ scoped: hasInline }, "composer opened in inline mode");
+      if (!hasInline) throw new Error("inline composer textbox not found after scroll");
+      scope = inlineForm;
+      textbox = inlineTextbox;
+      logger.info("composer opened in inline mode");
     }
   } catch (e) {
     try {
