@@ -70,11 +70,14 @@ async function runJob(job) {
     }
     await db.log({ jobId, action: "session_ok" });
 
+    await notify(`🚀 Job démarré — property \`${propertyId}\` — ${groups.length} groupe(s)`).catch(() => {});
+
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
 
       if (i > 0 && i % config.loop.browserRecycleEvery === 0) {
         logger.info({ i }, "browser recycle");
+        try { await session.save(context); } catch (e) { logger.warn({ err: e.message }, "session save before recycle failed"); }
         try { await page.close(); } catch (_) {}
         try { await context.close(); } catch (_) {}
         try { await br.close(); } catch (_) {}
@@ -104,12 +107,8 @@ async function runJob(job) {
           status: "success",
           record_id: recId,
         });
-        await db.log({
-          jobId,
-          groupId: group.id,
-          action: "post_ok",
-          message: postUrl,
-        });
+        await db.log({ jobId, groupId: group.id, action: "post_ok", message: postUrl });
+        await notify(`✅ ${group.name}${postUrl ? ` — ${postUrl}` : ""}`).catch(() => {});
       } catch (err) {
         if (err instanceof RateLimitedError) {
           logger.warn({ group: group.name }, "rate limited — stopping job");
@@ -133,6 +132,7 @@ async function runJob(job) {
             reason: "already_pending",
           });
           await db.log({ jobId, groupId: group.id, action: "post_skipped_pending", level: "info" });
+          await notify(`⏭ ${group.name} — déjà en attente d'approbation`).catch(() => {});
         } else {
           logger.warn(
             { err: err.message, group: group.url },
@@ -150,13 +150,8 @@ async function runJob(job) {
             status: "failed",
             error: err.message,
           });
-          await db.log({
-            jobId,
-            groupId: group.id,
-            action: "post_failed",
-            level: "error",
-            message: err.message,
-          });
+          await db.log({ jobId, groupId: group.id, action: "post_failed", level: "error", message: err.message });
+          await notify(`❌ ${group.name} — ${err.message}`).catch(() => {});
         }
       }
 
