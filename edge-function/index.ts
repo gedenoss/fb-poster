@@ -99,7 +99,7 @@ async function handleEnqueue(req: Request): Promise<Response> {
     .from("fb_posting_jobs")
     .select("id, status")
     .eq("property_id", propertyId)
-    .in("status", ["queued", "running", "needs_login"])
+    .in("status", ["queued", "running"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

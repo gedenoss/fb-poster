@@ -207,7 +207,15 @@ async function submitTwoFactor(page, code) {
 }
 
 async function postToGroup(page, group, text, imagePaths) {
-  await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
+  try {
+    await page.goto(group.url, { waitUntil: "commit", timeout: 30_000 });
+  } catch (e) {
+    if (/login|checkpoint/i.test(e.message)) {
+      logger.warn({ err: e.message }, "session expired — login redirect during goto");
+      throw new Error("session_expired");
+    }
+    throw e;
+  }
   await human.sleep(human.randInt(2000, 4000));
   await dismissCookieBanner(page);
 

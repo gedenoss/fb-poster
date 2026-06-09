@@ -8,7 +8,7 @@
       "httpOnly": false,
       "secure": true,
       "sameSite": "None",
-      "expires": 1812098504
+      "expires": 1812560074
     },
     {
       "name": "datr",
@@ -21,14 +21,24 @@
       "expires": 1815041380
     },
     {
+      "name": "dpr",
+      "value": "1.3333333730697632",
+      "domain": ".facebook.com",
+      "path": "/",
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "None",
+      "expires": 1781628944
+    },
+    {
       "name": "fr",
-      "value": "0E521Fxm3kagbLvm0.AWdDXgAwEcvjW5qdpG7FooBrhQHdHFYauT6cVZqrb4y2-60YU7o.BqITpN..AAA.0.0.BqITpN.AWdpz_hCxc8LaiECN7shd-fCMuI",
+      "value": "0kpA3AqRV4TwEC8Xv.AWcFEr4KnCuy8Y9KKMVDyob9zvZ5ZTfGjBpSEI9yjimZYh0xeic.BqKEVP..AAA.0.0.BqKEVP.AWepcFktKgFvrJMO4iJHHW5L9Uw",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": true,
       "secure": true,
       "sameSite": "None",
-      "expires": 1788338509
+      "expires": 1788800079
     },
     {
       "name": "locale",
@@ -52,7 +62,7 @@
     },
     {
       "name": "presence",
-      "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1780562512498%2C%22v%22%3A1%7D",
+      "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1781024144643%2C%22v%22%3A1%7D",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": false,
@@ -68,27 +78,27 @@
       "httpOnly": true,
       "secure": true,
       "sameSite": "None",
-      "expires": 1815122503
+      "expires": 1815584074
     },
     {
       "name": "wd",
-      "value": "1470x835",
+      "value": "2205x1252",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": false,
       "secure": true,
       "sameSite": "Lax",
-      "expires": 1781167312
+      "expires": 1781628944
     },
     {
       "name": "xs",
-      "value": "18%3AJNJo7asPBc1LbQ%3A2%3A1780562501%3A-1%3A-1%3A%3AAcymFtFfeRE6APy27pqAsTrMrXZSWQsL85ihM-BBYg",
+      "value": "11%3AscTx8cztiPK_GA%3A2%3A1781024071%3A-1%3A-1%3A%3AAczMD07rrzGrw8cTILnf_kjktUSugKBtsPn6gCY-Cg",
       "domain": ".facebook.com",
       "path": "/",
       "httpOnly": true,
       "secure": true,
       "sameSite": "None",
-      "expires": 1812098504
+      "expires": 1812560074
     }
   ],
   "origins": []

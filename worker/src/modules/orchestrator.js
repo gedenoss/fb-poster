@@ -206,24 +206,18 @@ async function runJob(job) {
   if (global.gc) try { global.gc(); } catch (_) {}
 
   const durationMin = Math.round((Date.now() - t0) / 60000);
+  const totalPosted = result.posts.filter((p) => p.status === "success").length;
+  const totalSkipped = result.posts.filter((p) => p.status === "skipped").length;
+  const totalFailed = result.posts.filter((p) => p.status === "failed").length;
+  const total = result.posts.length;
+  const summary = `${totalPosted}/${total} publié${totalPosted > 1 ? "s" : ""} — ${totalSkipped} skipped — ${totalFailed} échoué${totalFailed > 1 ? "s" : ""} — ${durationMin} min`;
+
   if (result.status === "completed") {
-    const lines = result.posts
-      .filter((p) => p.status === "success")
-      .map((p) => `✅ ${p.group_name}${p.post_url ? ` — ${p.post_url}` : ""}`)
-      .join("\n");
-    await notify(`✅ Job terminé (${durationMin} min)\n${lines}`).catch(() => {});
+    await notify(`✅ Job terminé — ${summary}`).catch(() => {});
   } else if (result.status === "partial") {
-    const lines = result.posts
-      .map((p) => p.status === "success"
-        ? `✅ ${p.group_name}`
-        : `❌ ${p.group_name} — ${p.error || "échec"}`)
-      .join("\n");
-    await notify(`⚠️ Job partiel (${durationMin} min)\n${lines}`).catch(() => {});
+    await notify(`⚠️ Job partiel — ${summary}`).catch(() => {});
   } else if (result.status === "failed") {
-    const lines = result.posts
-      .map((p) => `❌ ${p.group_name} — ${p.error || "échec"}`)
-      .join("\n");
-    await notify(`🔴 Job échoué (${durationMin} min)\n${lines}`).catch(() => {});
+    await notify(`🔴 Job échoué — ${summary}`).catch(() => {});
   }
 
   return result;
